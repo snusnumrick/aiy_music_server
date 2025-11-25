@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>AIY Music Server</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 AIY Music Server</h1>
+            <div class="status-bar">
+                <span id="status">Loading...</span>
+                <span id="file-count">0 files</span>
+            </div>
+        </header>
+
+        <div class="controls">
+            <button id="refresh-btn" class="btn">🔄 Refresh</button>
+            <div class="search-container">
+                <input type="search" id="search-input" placeholder="Search songs...">
+            </div>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading music...</p>
+        </div>
+
+        <div id="error-message" class="error" style="display: none;"></div>
+
+        <div id="music-list" class="music-list"></div>
+
+        <div class="player">
+            <div class="player-info">
+                <div class="now-playing">Now Playing:</div>
+                <div id="current-title" class="current-title">No track selected</div>
+                <div id="current-artist" class="current-artist"></div>
+            </div>
+            <audio id="audio-player" controls preload="none">
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+
+        <div id="track-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="modal-title"></h2>
+                <p id="modal-artist" class="modal-artist"></p>
+                <div id="modal-lyrics" class="modal-lyrics"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

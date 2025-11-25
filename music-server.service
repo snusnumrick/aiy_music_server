@@ -1,0 +1,32 @@
+[Unit]
+Description=AIY Music Server
+Documentation=https://github.com/your-username/aiy_media_server
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/music_server
+Environment=PATH=/home/pi/music_server/music_server/bin
+ExecStart=/home/pi/music_server/music_server/bin/python app.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=music-server
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/pi/music_server/music
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Virtual environment
+music_server/
+music_server/bin/
+music_server/lib/
+music_server/include/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Music files (add your own MP3s to .gitignore)
+music/*.mp3
+music/*.MP3
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Test files (optional - remove if you want to keep test MP3s)
+test_*.mp3
+
+# systemd service (user-specific)
+# music-server.service
+
