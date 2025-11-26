@@ -10,6 +10,19 @@ echo "  AIY Music Server - Setup Script"
 echo "=================================================="
 echo ""
 
+# Define variables
+SERVICE_NAME="aiy-server"
+SERVICE_DESCRIPTION="AIY Server (mDNS: aiy-server.local)"
+USER=$(whoami)
+GROUP=$(id -gn)
+WORKING_DIR="$(dirname "$(readlink -f "$0")")"
+
+# Check for sudo
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run with sudo"
+    exit 1
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -82,144 +95,89 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     echo "Setting up systemd service..."
     echo ""
-    echo "Choose your installation type:"
-    echo "  1) Default: For user 'pi' (standard Raspberry Pi setup)"
-    echo "  2) Custom: For any username (e.g., 'bob', 'alex', etc.)"
-    read -p "Select option (1 or 2): " -n 1 -r
-    echo ""
 
-    # Check if running as root or with sudo
-    if [ "$EUID" -ne 0 ]; then
-        echo -e "${YELLOW}⚠${NC} This script requires sudo for systemd setup"
-        echo ""
-        echo "Run these commands to install the service:"
-        echo "  chmod +x setup.sh"
-        echo "  sudo ./setup.sh"
-        echo ""
-        exit 1
-    else
-        # Running as root - handle service installation properly
-        if [[ $REPLY =~ ^[1]$ ]]; then
-            TARGET_USER="pi"
-            echo "Installing service for user: $TARGET_USER"
+    # Create the service file content
+    cat << EOF > "${SERVICE_NAME}.service"
+[Unit]
+Description=${SERVICE_DESCRIPTION}
+Documentation=https://github.com/snusnumrick/aiy_media_server
+After=network.target network-online.target
+Wants=network-online.target
+Requires=network-online.target
 
-            # Check if target user exists
-            if ! id "$TARGET_USER" &>/dev/null; then
-                echo -e "${RED}Error: User '$TARGET_USER' does not exist${NC}"
-                echo "Please create the user first or choose option 2 for a custom username"
-                exit 1
-            fi
+[Service]
+Type=simple
+User=${SUDO_USER}
+Group=$(id -gn ${SUDO_USER})
+Environment="PATH=${WORKING_DIR}/music_server/bin:/home/${SUDO_USER}/.pyenv/shims:/home/${SUDO_USER}/.pyenv/bin:/home/${SUDO_USER}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/home/${SUDO_USER}"
+WorkingDirectory=${WORKING_DIR}
+ExecStartPre=/bin/sleep 10
+ExecStart=/bin/bash -c "${SCRIPTS_DIR}/run.sh"
+ExecStart=${WORKING_DIR}/music_server/bin/python ${WORKING_DIR}/app.py
 
-            # Get target user's home directory
-            TARGET_HOME=$(getent passwd $TARGET_USER | cut -d: -f6)
+# Reload handler
+ExecReload=/bin/kill -HUP $MAINPID
 
-            # Check if music_server directory exists for this user
-            if [ ! -d "$TARGET_HOME/music_server" ]; then
-                echo -e "${YELLOW}⚠${NC} Music server not found in $TARGET_HOME/music_server"
-                echo "Current directory: $(pwd)"
-                echo "Should the service use: $(pwd)/music_server ?"
-                read -p "Continue? (y/n) " -n 1 -r
-                echo ""
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                    exit 1
-                fi
-            fi
+# Restart policy
+Restart=on-failure
+RestartSec=5
 
-            # Create a modified service file with actual paths (no %h specifiers)
-            SERVICE_FILE="/etc/systemd/system/music-server.service"
-            TEMP_FILE="/tmp/music-server-$$.service"
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=${SERVICE_NAME}
 
-            # Read the template and replace %h with actual home directory
-            sed "s|%h|$TARGET_HOME|g" music-server.service > "$TEMP_FILE"
+[Install]
+WantedBy=multi-user.target
+EOF
 
-            # Copy the modified service file with sudo
-            cp "$TEMP_FILE" "$SERVICE_FILE"
-            rm "$TEMP_FILE"
 
-            # Use sudo for systemctl commands
-            systemctl daemon-reload
-            systemctl enable music-server
-            systemctl start music-server
+    # Move the service file to the correct location
+    mv "${SERVICE_NAME}.service" /etc/systemd/system/
 
-            echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user '$TARGET_USER'"
-            echo "Paths configured: $TARGET_HOME/music_server"
-            echo ""
-            echo "Check status with: sudo systemctl status music-server"
-            echo "View logs with: sudo journalctl -u music-server -f"
-        else
-            read -p "Enter username to run service as: " username
-            if [ ! -z "$username" ]; then
-                echo "Installing service for user: $username"
+    # Create logrotate configuration
+    cat << EOF > "${SERVICE_NAME}-logrotate"
+    ${LOGS_DIR}/*.log {
+        daily
+        rotate 5
+        compress
+        delaycompress
+        missingok
+        notifempty
+        create 0644 ${SUDO_USER} $(id -gn ${SUDO_USER})
+        su ${SUDO_USER} $(id -gn ${SUDO_USER})
+        prerotate
+            cd ${WORKING_DIR} && ${SCRIPTS_DIR}/check_logs.sh
+        endscript
+    }
+    EOF
 
-                # Check if target user exists
-                if ! id "$username" &>/dev/null; then
-                    echo -e "${RED}Error: User '$username' does not exist${NC}"
-                    echo "Create the user first, then re-run this script"
-                    exit 1
-                fi
+    # Move the logrotate configuration to the correct location
+    mv "${SERVICE_NAME}-logrotate" /etc/logrotate.d/${SERVICE_NAME}
 
-                # Get target user's home directory
-                TARGET_HOME=$(getent passwd $username | cut -d: -f6)
+    # Set correct permissions for the logrotate configuration
+    chmod 644 /etc/logrotate.d/${SERVICE_NAME}
 
-                # Check if music_server directory exists for this user
-                if [ ! -d "$TARGET_HOME/music_server" ]; then
-                    echo -e "${YELLOW}⚠${NC} Music server not found in $TARGET_HOME/music_server"
-                    echo "Current directory: $(pwd)"
-                    echo "Should the service use: $(pwd)/music_server ?"
-                    read -p "Continue? (y/n) " -n 1 -r
-                    echo ""
-                    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                        exit 1
-                    fi
-                fi
+    # Reload systemd to recognize the new service
+    systemctl daemon-reload
 
-                # Create a modified service file with actual paths (no %i, %h specifiers)
-                SERVICE_FILE="/etc/systemd/system/music-server@$username.service"
-                TEMP_FILE="/tmp/music-server@$username-$$.service"
+    # Enable the service to start on boot
+    systemctl enable "${SERVICE_NAME}.service"
 
-                # Read the template and replace %h and %i with actual values
-                sed "s|%h|$TARGET_HOME|g; s|%i|$username|g" music-server@.service > "$TEMP_FILE"
+    # Start the service
+    systemctl start "${SERVICE_NAME}.service"
 
-                # Copy the modified service file with sudo
-                cp "$TEMP_FILE" "$SERVICE_FILE"
-                rm "$TEMP_FILE"
-
-                # Use sudo for systemctl commands
-                systemctl daemon-reload
-                systemctl enable music-server@$username
-                systemctl start music-server@$username
-
-                echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user '$username'"
-                echo "Paths configured: $TARGET_HOME/music_server"
-                echo ""
-                echo "Check status with: sudo systemctl status music-server@$username"
-                echo "View logs with: sudo journalctl -u music-server@$username -f"
-            fi
-        fi
-    fi
+    echo "Service ${SERVICE_NAME} has been created, enabled, and started."
+    echo "Logrotate configuration for ${SERVICE_NAME} has been set up."
+    echo "Check status with: sudo systemctl status ${SERVICE_NAME}"
+    echo "View logs with: sudo journalctl -u ${SERVICE_NAME} -f"
 fi
 
 echo ""
 echo "=================================================="
 echo -e "${GREEN}  Setup Complete!${NC}"
 echo "=================================================="
-echo ""
-echo "Next steps:"
-echo "  1. Start the server:"
-echo "     source music_server/bin/activate"
-echo "     python app.py"
-echo ""
-echo "  2. Or start as service:"
-echo "     sudo systemctl start music-server"
-echo ""
-echo "  3. Access from your phone:"
-echo "     Easy way: http://cubie-server.local:5001"
-echo "     Manual: http://[YOUR_IP]:5001"
-echo ""
-echo "  4. Add MP3 files:"
-echo "     Copy files to: $(pwd)/music/"
-echo ""
-echo "  5. Troubleshooting:"
-echo "     mDNS issues: See MDNS_TROUBLESHOOTING.md"
-echo "     Full docs: README.md"
+echo "
+echo "  Access from your phone: http://${SERVICE_NAME}.local:5001"
 echo "=================================================="
