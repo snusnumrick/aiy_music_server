@@ -107,21 +107,80 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         fi
         echo ""
     else
+        # Running as root - handle service installation properly
         if [[ $REPLY =~ ^[1]$ ]]; then
+            TARGET_USER="pi"
+            echo "Installing service for user: $TARGET_USER"
+
+            # Check if target user exists
+            if ! id "$TARGET_USER" &>/dev/null; then
+                echo -e "${RED}Error: User '$TARGET_USER' does not exist${NC}"
+                echo "Please create the user first or choose option 2 for a custom username"
+                exit 1
+            fi
+
+            # Get target user's home directory
+            TARGET_HOME=$(getent passwd $TARGET_USER | cut -d: -f6)
+
+            # Check if music_server directory exists for this user
+            if [ ! -d "$TARGET_HOME/music_server" ]; then
+                echo -e "${YELLOW}⚠${NC} Music server not found in $TARGET_HOME/music_server"
+                echo "Current directory: $(pwd)"
+                echo "Should the service use: $(pwd)/music_server ?"
+                read -p "Continue? (y/n) " -n 1 -r
+                echo ""
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    exit 1
+                fi
+            fi
+
             cp music-server.service /etc/systemd/system/
             systemctl daemon-reload
             systemctl enable music-server
-            echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user 'pi'"
-            echo "Start with: sudo systemctl start music-server"
+            systemctl start music-server
+
+            echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user '$TARGET_USER'"
+            echo "Service is running as user: $(systemctl show -p MainPID music-server | cut -d= -f2)"
+            echo ""
+            echo "Check status with: sudo systemctl status music-server"
+            echo "View logs with: sudo journalctl -u music-server -f"
         else
             read -p "Enter username to run service as: " username
             if [ ! -z "$username" ]; then
+                echo "Installing service for user: $username"
+
+                # Check if target user exists
+                if ! id "$username" &>/dev/null; then
+                    echo -e "${RED}Error: User '$username' does not exist${NC}"
+                    echo "Create the user first, then re-run this script"
+                    exit 1
+                fi
+
+                # Get target user's home directory
+                TARGET_HOME=$(getent passwd $username | cut -d: -f6)
+
+                # Check if music_server directory exists for this user
+                if [ ! -d "$TARGET_HOME/music_server" ]; then
+                    echo -e "${YELLOW}⚠${NC} Music server not found in $TARGET_HOME/music_server"
+                    echo "Current directory: $(pwd)"
+                    echo "Should the service use: $(pwd)/music_server ?"
+                    read -p "Continue? (y/n) " -n 1 -r
+                    echo ""
+                    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                        exit 1
+                    fi
+                fi
+
                 cp music-server@.service /etc/systemd/system/
                 systemctl daemon-reload
                 systemctl enable music-server@$username
                 systemctl start music-server@$username
+
                 echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user '$username'"
-                echo "Manage with: sudo systemctl status music-server@$username"
+                echo "Service is running as user: $(systemctl show -p MainPID music-server@$username | cut -d= -f2)"
+                echo ""
+                echo "Check status with: sudo systemctl status music-server@$username"
+                echo "View logs with: sudo journalctl -u music-server@$username -f"
             fi
         fi
     fi

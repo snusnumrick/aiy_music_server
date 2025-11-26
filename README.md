@@ -226,6 +226,34 @@ sudo systemctl start music-server@yourname
 
 This will run the service as user "yourname" with all paths auto-detected.
 
+### ⚠️ Important: Running as Root vs Service User
+
+When you run `sudo cp` and `sudo systemctl`, you're running commands **as root**, but the service should run as the specified user (pi or custom).
+
+**The issue:** If paths don't exist for the target user, the service fails.
+
+**The solution:** Use the setup script which verifies everything:
+
+```bash
+chmod +x setup.sh
+sudo ./setup.sh
+```
+
+The script will check:
+- User exists
+- Paths exist for that user
+- Service runs as the correct user
+
+**Verify the service user manually:**
+```bash
+# Check actual user running the service
+ps aux | grep "[p]ython.*app.py"
+
+# Should show: pi (or your username), NOT root
+```
+
+For troubleshooting, see: `SYSTEMD_USER_TROUBLESHOOTING.md`
+
 ### Alternative: Manual Startup
 
 If you prefer not to use systemd, you can start manually:
