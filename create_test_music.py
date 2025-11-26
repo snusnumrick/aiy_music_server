@@ -6,16 +6,19 @@ This script generates sample MP3 files with ID3 tags for testing purposes.
 
 import os
 import sys
+import subprocess
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, TIT2, TPE1, USLT
 
 def create_test_mp3(filepath, title, artist, lyrics):
-    """Create a test MP3 file with metadata"""
-
-    with open(filepath, 'wb') as f:
-        f.write(b'ID3' * 1000)
+    """Create a test MP3 file with metadata using ffmpeg"""
 
     try:
+        subprocess.run([
+            'ffmpeg', '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            '-t', '5', '-c:a', 'libmp3lame', '-y', filepath
+        ], check=True, capture_output=True)
+
         audio = MP3(filepath, ID3=ID3)
 
         audio.tags.add(TIT2(encoding=3, text=title))

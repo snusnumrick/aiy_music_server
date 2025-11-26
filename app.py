@@ -110,8 +110,13 @@ def load_metadata():
                     elif 'TPE1' in tags:
                         artist = str(tags['TPE1'][0])
 
-                    if 'USLT' in tags:
-                        lyrics = str(tags['USLT'][0])
+                    lyrics_keys = [k for k in tags.keys() if k.startswith('USLT')]
+                    if lyrics_keys:
+                        lyrics_value = tags[lyrics_keys[0]]
+                        if hasattr(lyrics_value, 'text'):
+                            lyrics = str(lyrics_value.text)
+                        else:
+                            lyrics = str(lyrics_value)
             except (ID3NoHeaderError, AttributeError, Exception):
                 pass
 
@@ -197,11 +202,11 @@ if __name__ == '__main__':
         observer = None
 
     try:
-        print("\nStarting server on http://0.0.0.0:5000")
-        print("Access from phone: http://[PI_IP]:5000")
+        print("\nStarting server on http://0.0.0.0:5001")
+        print("Access from phone: http://[PI_IP]:5001")
         print("\nPress Ctrl+C to stop")
         print("=" * 50)
-        app.run(host='0.0.0.0', port=5000, debug=False)
+        app.run(host='0.0.0.0', port=5001, debug=False)
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
