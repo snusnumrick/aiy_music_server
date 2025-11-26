@@ -211,7 +211,25 @@ def register_mdns_service():
 
     if not ZEROCONF_AVAILABLE:
         print("mDNS not available (zeroconf not installed)")
+        print("Install with: pip install zeroconf")
         return None
+
+    # Wait for network to be ready (helps on Pi Zero with slow WiFi)
+    import time
+    print("Checking network connectivity...")
+    for i in range(5):
+        try:
+            test_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            test_socket.settimeout(1)
+            test_socket.connect(("8.8.8.8", 53))
+            ip = test_socket.getsockname()[0]
+            test_socket.close()
+            print(f"✓ Network ready")
+            break
+        except Exception:
+            time.sleep(1)
+            if i == 4:
+                print(f"⚠ Network not fully ready - continuing anyway")
 
     hostname = socket.gethostname()
     ip_address = get_local_ip()
@@ -251,9 +269,18 @@ def register_mdns_service():
 
         return zeroconf
     except Exception as e:
-        print(f"⚠ Warning: Could not register mDNS service: {e}")
-        print(f"  You can still access the server at: http://{ip_address}:{SERVICE_PORT}")
-        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
+        import traceback
+        error_msg = str(e) if str(e) else "Unknown error"
+        print(f"⚠ Warning: Could not register mDNS service")
+        print(f"  Error: {error_msg}")
+        print(f"  You can still access the server at: http://{ip_address}:5001")
+        print(f"  Or: http://{hostname}.local:5001")
+        print(f"  ")
+        print(f"  Troubleshooting:")
+        print(f"  - Ensure network is ready before starting")
+        print(f"  - Check if avahi-daemon is running: sudo systemctl status avahi-daemon")
+        print(f"  - Verify network connectivity: ping 8.8.8.8")
+        print(f"  - Try manual service registration with avahi-browse")
         return None
 
 def unregister_mdns_service():

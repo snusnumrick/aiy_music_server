@@ -335,6 +335,16 @@ hostname -I
 # Then visit: http://192.168.x.x:5001
 ```
 
+**Comprehensive Troubleshooting:**
+For detailed mDNS troubleshooting steps, see:
+- `MDNS_TROUBLESHOOTING.md` - Complete guide to mDNS issues on Raspberry Pi
+
+Common fixes:
+1. Ensure avahi-daemon is running: `sudo systemctl status avahi-daemon`
+2. Install zeroconf: `pip install zeroconf==0.148.0`
+3. Check network connectivity: `ping 8.8.8.8`
+4. Verify firewall settings
+
 ### Slow file detection
 
 - Normal detection time: 0.5-2 seconds after file write completes
