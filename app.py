@@ -3,10 +3,20 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3NoHeaderError
 import os
 import time
+import socket
+import signal
+import sys
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import threading
+
+try:
+    from zeroconf import ServiceInfo, Zeroconf
+    ZEROCONF_AVAILABLE = True
+except ImportError:
+    ZEROCONF_AVAILABLE = False
+    print("Warning: zeroconf not installed. mDNS service will not be available.")
 
 app = Flask(__name__)
 
@@ -14,6 +24,12 @@ app = Flask(__name__)
 MUSIC_FOLDER = os.path.join(os.path.dirname(__file__), 'music')
 METADATA_CACHE = []
 FILE_CHANGE_LOCK = threading.Lock()
+
+# mDNS Configuration
+ZEROCONF_INSTANCE = None
+SERVICE_NAME = "Cubie"
+SERVICE_TYPE = "_http._tcp.local."
+SERVICE_PORT = 5001
 
 class MusicEventHandler(FileSystemEventHandler):
     """Handle file system events for music folder"""
@@ -172,8 +188,79 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'files_count': len(METADATA_CACHE),
-        'music_folder': MUSIC_FOLDER
+        'music_folder': MUSIC_FOLDER,
+        'mdns_enabled': ZEROCONF_AVAILABLE,
+        'service_name': SERVICE_NAME if ZEROCONF_AVAILABLE else None
     })
+
+def get_local_ip():
+    """Get the local IP address of the machine"""
+    try:
+        # Create a socket to determine local IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+def register_mdns_service():
+    """Register mDNS service for network discovery"""
+    global ZEROCONF_INSTANCE
+
+    if not ZEROCONF_AVAILABLE:
+        print("mDNS not available (zeroconf not installed)")
+        return None
+
+    try:
+        hostname = socket.gethostname()
+        ip_address = get_local_ip()
+
+        # Create service info
+        service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}"
+        addresses = [socket.inet_aton(ip_address)]
+
+        info = ServiceInfo(
+            SERVICE_TYPE,
+            service_name,
+            addresses=addresses,
+            port=SERVICE_PORT,
+            properties={
+                'path': '/',
+                'description': 'Music Server'
+            },
+            server=f"{hostname}.local."
+        )
+
+        # Register the service
+        zeroconf = Zeroconf()
+        zeroconf.register_service(info)
+
+        ZEROCONF_INSTANCE = zeroconf
+
+        print(f"✓ mDNS service registered: http://{SERVICE_NAME}.local:{SERVICE_PORT}")
+        print(f"  - Service name: {SERVICE_NAME}")
+        print(f"  - Local IP: {ip_address}")
+        print(f"  - Hostname: {hostname}.local")
+        print(f"  - URL: http://{hostname}.local:{SERVICE_PORT}")
+
+        return zeroconf
+    except Exception as e:
+        print(f"⚠ Warning: Could not register mDNS service: {e}")
+        return None
+
+def unregister_mdns_service():
+    """Unregister mDNS service on shutdown"""
+    global ZEROCONF_INSTANCE
+    if ZEROCONF_INSTANCE:
+        try:
+            ZEROCONF_INSTANCE.close()
+            print("✓ mDNS service unregistered")
+        except Exception as e:
+            print(f"Error unregistering mDNS service: {e}")
+        finally:
+            ZEROCONF_INSTANCE = None
 
 def start_file_monitor():
     """Start the file system monitor"""
@@ -195,6 +282,11 @@ if __name__ == '__main__':
 
     print(f"Loaded {len(METADATA_CACHE)} music files")
 
+    # Register mDNS service
+    zeroconf_instance = None
+    if ZEROCONF_AVAILABLE:
+        zeroconf_instance = register_mdns_service()
+
     try:
         observer = start_file_monitor()
     except Exception as e:
@@ -203,8 +295,9 @@ if __name__ == '__main__':
 
     try:
         print("\nStarting server on http://0.0.0.0:5001")
-        print("Access from phone: http://[PI_IP]:5001")
-        print("\nPress Ctrl+C to stop")
+        if ZEROCONF_AVAILABLE:
+            print(f"✓ mDNS enabled: Access via http://cubie.local:5001")
+        print("Press Ctrl+C to stop")
         print("=" * 50)
         app.run(host='0.0.0.0', port=5001, debug=False)
     except KeyboardInterrupt:
@@ -213,3 +306,5 @@ if __name__ == '__main__':
         if observer:
             observer.stop()
             observer.join()
+        if zeroconf_instance:
+            unregister_mdns_service()

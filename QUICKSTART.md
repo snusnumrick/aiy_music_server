@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get your AIY Music Server running in 5 minutes!
+Get your AIY Music Server (Cubie) running in 5 minutes!
 
 ## Prerequisites
 
@@ -13,6 +13,8 @@ brew install ffmpeg
 # Raspberry Pi
 sudo apt update && sudo apt install ffmpeg
 ```
+
+**The server will register as `cubie.local` on your network - no need to remember IP addresses!**
 
 ## For Raspberry Pi Zero
 
@@ -58,17 +60,18 @@ python3 -m venv music_server && source music_server/bin/activate && pip install 
 
 ## Access from Your Phone
 
-1. **Find your Pi's IP address:**
-   ```bash
-   hostname -I
-   ```
+**Super Easy: Just visit the mDNS service name!**
+```
+http://cubie.local:5001
+```
 
-2. **Open your phone browser to:**
-   ```
-   http://192.168.X.X:5001
-   ```
+**Alternative: Find IP address manually**
+```bash
+hostname -I
+```
+Then open: `http://192.168.X.X:5001`
 
-**Note:** The server runs on port **5001** (not 5000) to avoid conflicts.
+**Note:** The server runs on port 5001 and registers as "cubie.local" for automatic discovery!
 
 3. **Bookmark it!** Add to home screen for app-like experience
 

@@ -1,11 +1,14 @@
-# AIY Music Server
+# AIY Music Server (Cubie)
 
 A lightweight music server designed for Raspberry Pi Zero that automatically detects and serves MP3 files with embedded metadata through a mobile-friendly web interface.
+
+**Service Name: `cubie.local`** - Access your music from any device on the network!
 
 ## Features
 
 - 🎵 **Automatic Detection**: Watchdog file monitoring detects new MP3 files instantly
 - 📱 **Mobile-Friendly**: Responsive web interface optimized for phones
+- 🌐 **mDNS Discovery**: Automatic network discovery as "cubie.local" - no need to remember IPs!
 - 🏷️ **Metadata Support**: Reads ID3 tags for title, artist, and lyrics (ID3v2.3/2.4)
 - ⏯️ **Built-in Player**: HTML5 audio player with next/previous controls
 - 🔍 **Search & Filter**: Find tracks quickly by title or artist
@@ -50,18 +53,32 @@ This creates 8 sample MP3 files with various metadata scenarios including lyrics
 python app.py
 ```
 
-The server will start on `http://localhost:5001` (or `http://0.0.0.0:5001` for network access).
+The server will start and register an mDNS service for automatic network discovery.
 
-**Note:** The default port is 5001 (changed from 5000 to avoid conflicts with AirPlay Receiver on macOS).
+**Expected Output:**
+```
+✓ mDNS service registered: http://cubie.local:5001
+  - Service name: Cubie
+  - Local IP: 192.168.x.x
+  - Hostname: pi.local
+  - URL: http://pi.local:5001
+```
 
 ### 4. Access from Your Phone
 
-Find your Pi's IP address:
+**Easiest Way (mDNS - Recommended):**
+```
+http://cubie.local:5001
+```
+
+Or find your Pi's IP address:
 ```bash
 hostname -I
 ```
 
-Open your phone browser to: `http://192.168.x.x:5001`
+And open: `http://192.168.x.x:5001`
+
+**Note:** The default port is 5001. The mDNS service name is "cubie.local" and will be discoverable on your local network.
 
 ## Directory Structure
 
@@ -238,6 +255,35 @@ netstat -tlnp | grep :5001
 
 # Check firewall
 sudo ufw status
+```
+
+### mDNS not working (cubie.local not found)
+
+**Verify mDNS is enabled:**
+```bash
+# Check the API health endpoint
+curl http://localhost:5001/api/health | jq
+
+# Should show: {"mdns_enabled": true, "service_name": "Cubie", ...}
+```
+
+**Browse for services on your network:**
+```bash
+# On Raspberry Pi/Linux (with avahi):
+avahi-browse -a -t | grep -i cubie
+
+# On macOS:
+dns-sd -B _http._tcp
+
+# On Windows (install Bonjour SDK):
+```
+
+**Manual connection:**
+If mDNS doesn't work on your network, use the IP address:
+```bash
+# Get Pi's IP
+hostname -I
+# Then visit: http://192.168.x.x:5001
 ```
 
 ### Slow file detection
