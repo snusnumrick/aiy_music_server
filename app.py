@@ -159,6 +159,10 @@ def load_metadata():
     METADATA_CACHE = metadata_list
     print(f"Loaded {len(metadata_list)} music files")
 
+def get_music_folder():
+    """Get the music folder path (for local services on same machine)"""
+    return MUSIC_FOLDER
+
 @app.route('/')
 def index():
     """Serve the main web interface"""
@@ -192,6 +196,49 @@ def health_check():
         'mdns_enabled': ZEROCONF_AVAILABLE,
         'service_name': SERVICE_NAME if ZEROCONF_AVAILABLE else None
     })
+
+@app.route('/api/config')
+def get_config():
+    """Return configuration for voice assistant and other services"""
+    return jsonify({
+        'music_folder': MUSIC_FOLDER,
+        'server_url': f'http://localhost:{SERVICE_PORT}',
+        'server_port': SERVICE_PORT,
+        'service_name': SERVICE_NAME
+    })
+
+@app.route('/api/delete/<filename>', methods=['DELETE'])
+def delete_track(filename):
+    """Delete a music file"""
+    try:
+        # Decode the filename
+        filename = filename.replace('/', '')
+        filepath = os.path.join(MUSIC_FOLDER, filename)
+
+        # Check if file exists
+        if not os.path.exists(filepath):
+            return jsonify({
+                'status': 'error',
+                'message': 'File not found'
+            }), 404
+
+        # Delete the file
+        os.remove(filepath)
+
+        # Reload metadata
+        with FILE_CHANGE_LOCK:
+            load_metadata()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'File deleted successfully'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 def get_local_ip():
     """Get the local IP address of the machine"""

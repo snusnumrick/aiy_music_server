@@ -4,6 +4,7 @@ let filteredTracks = [];
 const POLLING_INTERVAL = 3000;
 let pollingTimer = null;
 let currentFontSize = 'medium';
+let deleteTrackIndex = null;
 
 const elements = {
     musicList: document.getElementById('music-list'),
@@ -16,11 +17,10 @@ const elements = {
     audioPlayer: document.getElementById('audio-player'),
     currentTitle: document.getElementById('current-title'),
     currentArtist: document.getElementById('current-artist'),
-    trackModal: document.getElementById('track-modal'),
-    modalTitle: document.getElementById('modal-title'),
-    modalArtist: document.getElementById('modal-artist'),
-    modalLyrics: document.getElementById('modal-lyrics'),
-    modalClose: document.querySelector('.close')
+    deleteModal: document.getElementById('delete-modal'),
+    deleteModalText: document.getElementById('delete-modal-text'),
+    cancelDelete: document.getElementById('cancel-delete'),
+    confirmDelete: document.getElementById('confirm-delete')
 };
 
 async function fetchMusic() {
@@ -79,9 +79,10 @@ function renderTrackList() {
     elements.musicList.innerHTML = filteredTracks.map((track, index) => {
         const isPlaying = musicData[currentTrackIndex]?.filename === track.filename;
         const lyricsPreview = track.lyrics ? track.lyrics.substring(0, 100) + '...' : 'No lyrics available';
+        const actualIndex = musicData.indexOf(track);
 
         return `
-            <div class="track-item ${isPlaying ? 'playing' : ''}" data-index="${musicData.indexOf(track)}">
+            <div class="track-item ${isPlaying ? 'playing' : ''}" data-index="${actualIndex}">
                 <div class="track-title">${escapeHtml(track.title)}</div>
                 <div class="track-artist">${escapeHtml(track.artist)}</div>
                 ${track.lyrics ? `<div class="track-lyrics-preview">${escapeHtml(lyricsPreview)}</div>` : ''}
@@ -90,11 +91,13 @@ function renderTrackList() {
                     <span>${formatDate(track.created)}</span>
                 </div>
                 <div class="track-actions">
-                    <button class="action-btn" onclick="playTrack(${musicData.indexOf(track)})">
+                    <button class="action-btn" onclick="playTrack(${actualIndex})">
                         ${isPlaying ? '⏸ Pause' : '▶️ Play'}
                     </button>
-                    ${track.lyrics ? `<button class="action-btn" onclick="showLyrics(${musicData.indexOf(track)})">📄 Lyrics</button>` : ''}
-                    ${track.lyrics ? `<button class="action-btn" onclick="showFullscreenLyrics(${musicData.indexOf(track)})">📖 Fullscreen</button>` : ''}
+                    ${track.lyrics ? `<button class="action-btn fullscreen-btn" onclick="showFullscreenLyrics(${actualIndex})">📖 Fullscreen Lyrics</button>` : ''}
+                    <button class="action-btn delete-btn" onclick="confirmDeleteTrack(${actualIndex})">
+                        🗑️ Delete
+                    </button>
                 </div>
             </div>
         `;
@@ -141,16 +144,6 @@ function playNextTrack() {
     }
 }
 
-function showLyrics(index) {
-    if (index < 0 || index >= musicData.length) return;
-
-    const track = musicData[index];
-    elements.modalTitle.textContent = track.title;
-    elements.modalArtist.textContent = track.artist;
-    elements.modalLyrics.textContent = track.lyrics || 'No lyrics available';
-    elements.trackModal.style.display = 'flex';
-}
-
 function showFullscreenLyrics(index) {
     if (index < 0 || index >= musicData.length) return;
 
@@ -158,14 +151,14 @@ function showFullscreenLyrics(index) {
     document.getElementById('fullscreen-title').textContent = track.title;
     document.getElementById('fullscreen-artist').textContent = track.artist;
     document.getElementById('fullscreen-lyrics-content').textContent = track.lyrics || 'No lyrics available';
-    document.getElementById('fullscreen-lyrics').style.display = 'flex';
+    document.getElementById('fullscreen-lyrics').classList.remove('hidden');
 
     currentFontSize = 'medium';
     updateFontSize();
 }
 
 function hideFullscreenLyrics() {
-    document.getElementById('fullscreen-lyrics').style.display = 'none';
+    document.getElementById('fullscreen-lyrics').classList.add('hidden');
 }
 
 function updateFontSize() {
@@ -174,8 +167,46 @@ function updateFontSize() {
     content.classList.add(`font-${currentFontSize}`);
 }
 
-function hideModal() {
-    elements.trackModal.style.display = 'none';
+function confirmDeleteTrack(index) {
+    if (index < 0 || index >= musicData.length) return;
+
+    deleteTrackIndex = index;
+    const track = musicData[index];
+    elements.deleteModalText.textContent = `Are you sure you want to delete "${track.title}" by ${track.artist}?`;
+    elements.deleteModal.classList.remove('hidden');
+    elements.deleteModal.classList.add('flex');
+}
+
+async function deleteTrack() {
+    if (deleteTrackIndex === null) return;
+
+    const track = musicData[deleteTrackIndex];
+
+    try {
+        const response = await fetch(`/api/delete/${encodeURIComponent(track.filename)}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            elements.status.textContent = 'Track deleted';
+            await fetchMusic();
+        } else {
+            throw new Error(result.message || 'Delete failed');
+        }
+    } catch (error) {
+        console.error('Error deleting track:', error);
+        showError(`Failed to delete track: ${error.message}`);
+    }
+
+    deleteTrackIndex = null;
+    elements.deleteModal.classList.add('hidden');
+    elements.deleteModal.classList.remove('flex');
 }
 
 function escapeHtml(text) {
@@ -260,11 +291,19 @@ elements.audioPlayer.addEventListener('error', (e) => {
     showError('Audio playback error');
 });
 
-elements.modalClose.addEventListener('click', hideModal);
+elements.cancelDelete.addEventListener('click', () => {
+    deleteTrackIndex = null;
+    elements.deleteModal.classList.add('hidden');
+    elements.deleteModal.classList.remove('flex');
+});
 
-elements.trackModal.addEventListener('click', (e) => {
-    if (e.target === elements.trackModal) {
-        hideModal();
+elements.confirmDelete.addEventListener('click', deleteTrack);
+
+elements.deleteModal.addEventListener('click', (e) => {
+    if (e.target === elements.deleteModal) {
+        deleteTrackIndex = null;
+        elements.deleteModal.classList.add('hidden');
+        elements.deleteModal.classList.remove('flex');
     }
 });
 
@@ -295,9 +334,12 @@ document.getElementById('fullscreen-lyrics').addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-        if (elements.trackModal.style.display === 'flex') {
-            hideModal();
-        } else if (document.getElementById('fullscreen-lyrics').style.display === 'flex') {
+        if (!elements.deleteModal.classList.contains('hidden')) {
+            deleteTrackIndex = null;
+            elements.deleteModal.classList.add('hidden');
+            elements.deleteModal.classList.remove('flex');
+        } else if (document.getElementById('fullscreen-lyrics').style.display === 'flex' ||
+                   !document.getElementById('fullscreen-lyrics').classList.contains('hidden')) {
             hideFullscreenLyrics();
         }
     }

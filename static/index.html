@@ -7,67 +7,104 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>AIY Music Server</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#667eea',
+                        secondary: '#764ba2',
+                    }
+                }
+            }
+        }
+    </script>
     <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🎵 AIY Music Server</h1>
-            <div class="status-bar">
-                <span id="status">Loading...</span>
-                <span id="file-count">0 files</span>
+<body class="bg-gradient-to-br from-primary to-secondary min-h-screen">
+    <div class="max-w-5xl mx-auto min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-lg p-6 md:p-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold text-primary mb-2">🎵 AIY Music Server</h1>
+                    <p class="text-gray-600 dark:text-gray-300 text-lg">cubie-server.local</p>
+                </div>
+                <div class="text-right">
+                    <div id="status" class="text-lg font-semibold text-gray-800 dark:text-gray-200">Loading...</div>
+                    <div id="file-count" class="text-base text-gray-600 dark:text-gray-400">0 files</div>
+                </div>
             </div>
         </header>
 
-        <div class="controls">
-            <button id="refresh-btn" class="btn">🔄 Refresh</button>
-            <div class="search-container">
-                <input type="search" id="search-input" placeholder="Search songs...">
+        <!-- Controls -->
+        <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm p-4 md:p-6 shadow-lg">
+            <div class="flex flex-col md:flex-row gap-4">
+                <button id="refresh-btn" class="bg-primary hover:bg-primary/90 text-white font-bold py-4 px-6 rounded-xl text-lg transition-all transform hover:scale-105 active:scale-95 shadow-lg">
+                    🔄 Refresh
+                </button>
+                <div class="flex-1">
+                    <input type="search" id="search-input" placeholder="Search songs by title or artist..."
+                           class="w-full py-4 px-6 text-lg border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:border-primary focus:outline-none bg-white dark:bg-gray-700 dark:text-white transition-all">
+                </div>
             </div>
         </div>
 
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <p>Loading music...</p>
+        <!-- Loading -->
+        <div id="loading" class="loading flex-1 flex flex-col items-center justify-center text-white">
+            <div class="spinner w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mb-6"></div>
+            <p class="text-2xl">Loading music...</p>
         </div>
 
-        <div id="error-message" class="error" style="display: none;"></div>
+        <!-- Error -->
+        <div id="error-message" class="error bg-red-500 text-white p-6 m-6 rounded-xl text-center text-xl shadow-lg" style="display: none;"></div>
 
-        <div id="music-list" class="music-list"></div>
+        <!-- Music List -->
+        <div id="music-list" class="flex-1 p-4 md:p-6 overflow-y-auto"></div>
 
-        <div class="player">
-            <div class="player-info">
-                <div class="now-playing">Now Playing:</div>
-                <div id="current-title" class="current-title">No track selected</div>
-                <div id="current-artist" class="current-artist"></div>
+        <!-- Player -->
+        <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm p-6 md:p-8 shadow-2xl">
+            <div class="player-info mb-6">
+                <div class="text-base text-gray-600 dark:text-gray-300 mb-2">Now Playing:</div>
+                <div id="current-title" class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1 truncate">No track selected</div>
+                <div id="current-artist" class="text-lg text-gray-600 dark:text-gray-400"></div>
             </div>
-            <audio id="audio-player" controls preload="none">
+            <audio id="audio-player" controls preload="none" class="w-full h-14">
                 Your browser does not support the audio element.
             </audio>
         </div>
+    </div>
 
-        <div id="track-modal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2 id="modal-title"></h2>
-                <p id="modal-artist" class="modal-artist"></p>
-                <div id="modal-lyrics" class="modal-lyrics"></div>
+    <!-- Fullscreen Lyrics -->
+    <div id="fullscreen-lyrics" class="fullscreen-lyrics fixed inset-0 bg-gradient-to-br from-gray-900 to-gray-800 z-50 hidden flex-col">
+        <div class="bg-black/50 p-6 md:p-8 flex items-start border-b border-white/10">
+            <button class="fullscreen-close text-white hover:text-primary text-5xl md:text-6xl font-thin transition-colors mr-6" id="fullscreen-close-btn">&times;</button>
+            <div class="flex-1 overflow-hidden">
+                <h2 id="fullscreen-title" class="text-3xl md:text-5xl font-bold text-white mb-3 break-words"></h2>
+                <p id="fullscreen-artist" class="text-xl md:text-2xl text-gray-300"></p>
             </div>
         </div>
+        <div id="fullscreen-lyrics-content" class="flex-1 overflow-y-auto p-8 md:p-12 text-white text-xl md:text-3xl leading-relaxed whitespace-pre-wrap break-words"></div>
+        <div class="bg-black/50 p-6 flex justify-center gap-4 border-t border-white/10">
+            <button class="btn bg-primary hover:bg-primary/90 text-white font-bold py-4 px-8 rounded-xl text-xl transition-all" id="exit-fullscreen-btn">← Back</button>
+            <button class="btn bg-gray-600 hover:bg-gray-500 text-white font-bold py-4 px-8 rounded-xl text-xl transition-all" id="fullscreen-font-smaller">A-</button>
+            <button class="btn bg-gray-600 hover:bg-gray-500 text-white font-bold py-4 px-8 rounded-xl text-xl transition-all" id="fullscreen-font-larger">A+</button>
+        </div>
+    </div>
 
-        <div id="fullscreen-lyrics" class="fullscreen-lyrics" style="display: none;">
-            <div class="fullscreen-header">
-                <button class="fullscreen-close" id="fullscreen-close-btn">&times;</button>
-                <div class="fullscreen-title-container">
-                    <h2 id="fullscreen-title"></h2>
-                    <p id="fullscreen-artist" class="fullscreen-artist"></p>
-                </div>
-            </div>
-            <div id="fullscreen-lyrics-content" class="fullscreen-lyrics-content"></div>
-            <div class="fullscreen-controls">
-                <button class="btn" id="exit-fullscreen-btn">← Back</button>
-                <button class="btn" id="fullscreen-font-smaller">A-</button>
-                <button class="btn" id="fullscreen-font-larger">A+</button>
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-6">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+            <h3 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-4">Delete Song</h3>
+            <p class="text-lg text-gray-600 dark:text-gray-300 mb-6" id="delete-modal-text"></p>
+            <div class="flex gap-4 justify-end">
+                <button id="cancel-delete" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-xl text-lg transition-all">
+                    Cancel
+                </button>
+                <button id="confirm-delete" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-xl text-lg transition-all">
+                    Delete
+                </button>
             </div>
         </div>
     </div>

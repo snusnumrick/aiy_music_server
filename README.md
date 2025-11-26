@@ -377,10 +377,12 @@ GET  /api/music         → Get all music files (JSON)
 GET  /music/<filename>  → Stream MP3 file
 POST /api/refresh       → Manually reload metadata
 GET  /api/health        → Health check
+GET  /api/config        → Get server configuration (for voice assistant)
 ```
 
 ### API Response Format
 
+**GET /api/music**
 ```json
 [
   {
@@ -393,6 +395,16 @@ GET  /api/health        → Health check
     "modified": "2025-11-25T10:30:00"
   }
 ]
+```
+
+**GET /api/config** (for voice assistant)
+```json
+{
+  "music_folder": "/home/pi/music_server/music",
+  "server_url": "http://localhost:5001",
+  "server_port": 5001,
+  "service_name": "cubie-server"
+}
 ```
 
 ### Adding Features
