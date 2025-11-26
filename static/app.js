@@ -91,12 +91,12 @@ function renderTrackList() {
                     <span>${formatDate(track.created)}</span>
                 </div>
                 <div class="track-actions">
-                    <button class="action-btn" onclick="playTrack(${actualIndex})">
-                        ${isPlaying ? '⏸ Pause' : '▶️ Play'}
+                    <button class="action-btn" onclick="playTrack(${actualIndex})" title="${isPlaying ? 'Pause' : 'Play'}">
+                        ${isPlaying ? '⏸' : '▶️'}
                     </button>
-                    ${track.lyrics ? `<button class="action-btn fullscreen-btn" onclick="showFullscreenLyrics(${actualIndex})">📖 Fullscreen Lyrics</button>` : ''}
-                    <button class="action-btn delete-btn" onclick="confirmDeleteTrack(${actualIndex})">
-                        🗑️ Delete
+                    ${track.lyrics ? `<button class="action-btn fullscreen-btn" onclick="showFullscreenLyrics(${actualIndex})" title="Fullscreen Lyrics">📖</button>` : ''}
+                    <button class="action-btn delete-btn" onclick="confirmDeleteTrack(${actualIndex})" title="Delete">
+                        🗑️
                     </button>
                 </div>
             </div>
