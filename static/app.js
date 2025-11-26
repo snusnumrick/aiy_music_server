@@ -3,6 +3,7 @@ let currentTrackIndex = -1;
 let filteredTracks = [];
 const POLLING_INTERVAL = 3000;
 let pollingTimer = null;
+let currentFontSize = 'medium';
 
 const elements = {
     musicList: document.getElementById('music-list'),
@@ -93,6 +94,7 @@ function renderTrackList() {
                         ${isPlaying ? '⏸ Pause' : '▶️ Play'}
                     </button>
                     ${track.lyrics ? `<button class="action-btn" onclick="showLyrics(${musicData.indexOf(track)})">📄 Lyrics</button>` : ''}
+                    ${track.lyrics ? `<button class="action-btn" onclick="showFullscreenLyrics(${musicData.indexOf(track)})">📖 Fullscreen</button>` : ''}
                 </div>
             </div>
         `;
@@ -147,6 +149,29 @@ function showLyrics(index) {
     elements.modalArtist.textContent = track.artist;
     elements.modalLyrics.textContent = track.lyrics || 'No lyrics available';
     elements.trackModal.style.display = 'flex';
+}
+
+function showFullscreenLyrics(index) {
+    if (index < 0 || index >= musicData.length) return;
+
+    const track = musicData[index];
+    document.getElementById('fullscreen-title').textContent = track.title;
+    document.getElementById('fullscreen-artist').textContent = track.artist;
+    document.getElementById('fullscreen-lyrics-content').textContent = track.lyrics || 'No lyrics available';
+    document.getElementById('fullscreen-lyrics').style.display = 'flex';
+
+    currentFontSize = 'medium';
+    updateFontSize();
+}
+
+function hideFullscreenLyrics() {
+    document.getElementById('fullscreen-lyrics').style.display = 'none';
+}
+
+function updateFontSize() {
+    const content = document.getElementById('fullscreen-lyrics-content');
+    content.classList.remove('font-small', 'font-medium', 'font-large');
+    content.classList.add(`font-${currentFontSize}`);
 }
 
 function hideModal() {
@@ -243,9 +268,38 @@ elements.trackModal.addEventListener('click', (e) => {
     }
 });
 
+document.getElementById('fullscreen-close-btn').addEventListener('click', hideFullscreenLyrics);
+document.getElementById('exit-fullscreen-btn').addEventListener('click', hideFullscreenLyrics);
+document.getElementById('fullscreen-font-smaller').addEventListener('click', () => {
+    if (currentFontSize === 'large') {
+        currentFontSize = 'medium';
+    } else if (currentFontSize === 'medium') {
+        currentFontSize = 'small';
+    }
+    updateFontSize();
+});
+document.getElementById('fullscreen-font-larger').addEventListener('click', () => {
+    if (currentFontSize === 'small') {
+        currentFontSize = 'medium';
+    } else if (currentFontSize === 'medium') {
+        currentFontSize = 'large';
+    }
+    updateFontSize();
+});
+
+document.getElementById('fullscreen-lyrics').addEventListener('click', (e) => {
+    if (e.target.id === 'fullscreen-lyrics') {
+        hideFullscreenLyrics();
+    }
+});
+
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && elements.trackModal.style.display === 'flex') {
-        hideModal();
+    if (e.key === 'Escape') {
+        if (elements.trackModal.style.display === 'flex') {
+            hideModal();
+        } else if (document.getElementById('fullscreen-lyrics').style.display === 'flex') {
+            hideFullscreenLyrics();
+        }
     }
 });
 

@@ -10,6 +10,7 @@ A lightweight music server designed for Raspberry Pi Zero that automatically det
 - ⏯️ **Built-in Player**: HTML5 audio player with next/previous controls
 - 🔍 **Search & Filter**: Find tracks quickly by title or artist
 - 📄 **Lyrics Display**: View full lyrics in modal overlay
+- 📖 **Fullscreen Lyrics**: Immersive full-screen lyrics view with font size controls
 - ⚡ **Real-time Updates**: Auto-refreshes every 3 seconds
 - 🎨 **Modern UI**: Dark/light theme support with gradient backgrounds
 
@@ -86,7 +87,8 @@ Simply copy MP3 files into the `music/` directory. The server will:
 - **Next Track**: Auto-advances when current track ends
 - **Search**: Filter tracks by title, artist, or filename
 - **Refresh Button**: Manual metadata reload
-- **Lyrics View**: Tap "Lyrics" button to see full text
+- **Lyrics View**: Tap "Lyrics" button to see full text in modal
+- **Fullscreen Lyrics**: Tap "Fullscreen" button for immersive lyrics view with adjustable font size
 - **Auto-Refresh**: Polls server every 3 seconds for new files
 
 ## Deployment (Production)
