@@ -168,6 +168,106 @@ def index():
     """Serve the main web interface"""
     return send_from_directory('static', 'index.html')
 
+@app.route('/api/tailscale/status')
+def tailscale_status():
+    """Get TailScale status"""
+    try:
+        import subprocess
+        result = subprocess.run(['tailscale', 'status', '--json'],
+                              capture_output=True, text=True, timeout=10)
+
+        if result.returncode != 0:
+            return jsonify({
+                'installed': False,
+                'running': False,
+                'error': result.stderr
+            }), 200
+
+        import json
+        status_data = json.loads(result.stdout)
+
+        # Parse status
+        installed = True
+        running = status_data.get('BackendState') == 'Running'
+
+        return jsonify({
+            'installed': installed,
+            'running': running,
+            'status': status_data,
+            'url': status_data.get('Self', {}).get('ID', ''),
+            'addresses': status_data.get('Self', {}).get('TailscaleIPs', []),
+            'version': status_data.get('Version', '')
+        }), 200
+
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'installed': True,
+            'running': False,
+            'error': 'Command timed out'
+        }), 200
+    except FileNotFoundError:
+        return jsonify({
+            'installed': False,
+            'running': False,
+            'error': 'TailScale not installed'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'installed': True,
+            'running': False,
+            'error': str(e)
+        }), 200
+
+@app.route('/api/tailscale/up', methods=['POST'])
+def tailscale_up():
+    """Enable TailScale"""
+    try:
+        import subprocess
+        result = subprocess.run(['sudo', 'tailscale', 'up'],
+                              capture_output=True, text=True, timeout=30)
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'success',
+                'message': 'TailScale enabled successfully'
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': result.stderr
+            }), 500
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/tailscale/down', methods=['POST'])
+def tailscale_down():
+    """Disable TailScale"""
+    try:
+        import subprocess
+        result = subprocess.run(['sudo', 'tailscale', 'down'],
+                              capture_output=True, text=True, timeout=30)
+
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'success',
+                'message': 'TailScale disabled successfully'
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': result.stderr
+            }), 500
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 @app.route('/api/music')
 def get_music():
     """Return JSON array of music files with metadata"""
@@ -239,6 +339,11 @@ def delete_track(filename):
             'status': 'error',
             'message': str(e)
         }), 500
+
+@app.route('/support')
+def support_page():
+    """Serve the support page"""
+    return send_from_directory('static', 'support.html')
 
 def get_local_ip():
     """Get the local IP address of the machine"""

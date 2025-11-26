@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Support - AIY Music Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-slate-800 min-h-screen text-white">
+    <div class="max-w-4xl mx-auto p-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <a href="/" class="inline-flex items-center text-blue-400 hover:text-blue-300 transition-colors">
+                    <i data-lucide="arrow-left" class="w-5 h-5 mr-2"></i>
+                    Back to Music
+                </a>
+                <h1 class="text-3xl font-bold mt-4">Support & Diagnostics</h1>
+            </div>
+        </div>
+
+        <!-- TailScale Section -->
+        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6 shadow-xl mb-6">
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center">
+                    <i data-lucide="globe" class="w-8 h-8 mr-3 text-blue-400"></i>
+                    <div>
+                        <h2 class="text-2xl font-bold">TailScale VPN</h2>
+                        <p class="text-gray-300">Secure network connection management</p>
+                    </div>
+                </div>
+                <div id="tailscale-status-badge" class="px-4 py-2 rounded-full font-bold">
+                    <span class="animate-pulse">Loading...</span>
+                </div>
+            </div>
+
+            <div id="tailscale-info" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="bg-black/20 rounded-xl p-4">
+                    <div class="text-gray-400 text-sm mb-1">Status</div>
+                    <div id="status-text" class="text-xl font-semibold">-</div>
+                </div>
+                <div class="bg-black/20 rounded-xl p-4">
+                    <div class="text-gray-400 text-sm mb-1">Installed</div>
+                    <div id="installed-text" class="text-xl font-semibold">-</div>
+                </div>
+                <div class="bg-black/20 rounded-xl p-4">
+                    <div class="text-gray-400 text-sm mb-1">Version</div>
+                    <div id="version-text" class="text-xl font-semibold">-</div>
+                </div>
+                <div class="bg-black/20 rounded-xl p-4">
+                    <div class="text-gray-400 text-sm mb-1">IP Addresses</div>
+                    <div id="addresses-text" class="text-lg font-semibold">-</div>
+                </div>
+            </div>
+
+            <div class="flex gap-4">
+                <button id="enable-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center">
+                    <i data-lucide="power" class="w-5 h-5 mr-2"></i>
+                    Enable TailScale
+                </button>
+                <button id="disable-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center">
+                    <i data-lucide="power-off" class="w-5 h-5 mr-2"></i>
+                    Disable TailScale
+                </button>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6 shadow-xl">
+            <div class="flex items-center mb-6">
+                <i data-lucide="server" class="w-8 h-8 mr-3 text-purple-400"></i>
+                <h2 class="text-2xl font-bold">System Information</h2>
+            </div>
+
+            <div id="system-info" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-black/20 rounded-xl p-4">
+                    <div class="text-gray-400 text-sm mb-1">Hostname</div>
+                    <div class="text-xl font-semibold" id="hostname">-</div>
+                </div>
+                <div class="bg-black/20 rounded-xl p-4">
+                    <div class="text-gray-400 text-sm mb-1">Service Name</div>
+                    <div class="text-xl font-semibold">cubie-server</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Load system info
+        async function loadSystemInfo() {
+            try {
+                const hostname = window.location.hostname;
+                document.getElementById('hostname').textContent = hostname;
+            } catch (e) {
+                console.error('Error loading system info:', e);
+            }
+        }
+
+        // Load TailScale status
+        async function loadTailScaleStatus() {
+            try {
+                const response = await fetch('/api/tailscale/status');
+                const data = await response.json();
+
+                // Update status badge
+                const badge = document.getElementById('tailscale-status-badge');
+                if (data.installed) {
+                    if (data.running) {
+                        badge.className = 'px-4 py-2 rounded-full font-bold bg-green-600 text-white';
+                        badge.innerHTML = '<i data-lucide="check-circle" class="w-5 h-5 mr-2 inline"></i>Connected';
+                    } else {
+                        badge.className = 'px-4 py-2 rounded-full font-bold bg-gray-600 text-white';
+                        badge.innerHTML = '<i data-lucide="x-circle" class="w-5 h-5 mr-2 inline"></i>Disconnected';
+                    }
+                } else {
+                    badge.className = 'px-4 py-2 rounded-full font-bold bg-yellow-600 text-white';
+                    badge.innerHTML = '<i data-lucide="alert-triangle" class="w-5 h-5 mr-2 inline"></i>Not Installed';
+                }
+                lucide.createIcons();
+
+                // Update info cards
+                document.getElementById('status-text').textContent = data.running ? 'Running' : 'Stopped';
+                document.getElementById('installed-text').textContent = data.installed ? 'Yes' : 'No';
+                document.getElementById('version-text').textContent = data.version || 'N/A';
+                document.getElementById('addresses-text').textContent = data.addresses && data.addresses.length > 0
+                    ? data.addresses.join(', ')
+                    : 'N/A';
+
+            } catch (e) {
+                console.error('Error loading TailScale status:', e);
+            }
+        }
+
+        // Enable TailScale
+        async function enableTailScale() {
+            const btn = document.getElementById('enable-btn');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>Enabling...';
+            btn.disabled = true;
+            lucide.createIcons();
+
+            try {
+                const response = await fetch('/api/tailscale/up', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    await loadTailScaleStatus();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (e) {
+                alert('Error enabling TailScale: ' + e.message);
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        // Disable TailScale
+        async function disableTailScale() {
+            const btn = document.getElementById('disable-btn');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="loader" class="w-5 h-5 mr-2 animate-spin"></i>Disabling...';
+            btn.disabled = true;
+            lucide.createIcons();
+
+            try {
+                const response = await fetch('/api/tailscale/down', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    await loadTailScaleStatus();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (e) {
+                alert('Error disabling TailScale: ' + e.message);
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        // Event listeners
+        document.getElementById('enable-btn').addEventListener('click', enableTailScale);
+        document.getElementById('disable-btn').addEventListener('click', disableTailScale);
+
+        // Load initial data
+        loadSystemInfo();
+        loadTailScaleStatus();
+
+        // Refresh status every 5 seconds
+        setInterval(loadTailScaleStatus, 5000);
+    </script>
+</body>
+</html>
