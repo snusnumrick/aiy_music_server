@@ -139,16 +139,19 @@ Simply copy MP3 files into the `music/` directory. The server will:
    ssh pi@192.168.X.X
    cd ~/music_server
    chmod +x setup.sh
-   ./setup.sh
+   sudo ./setup.sh
    ```
 
 3. **Setup systemd service (recommended for auto-start):**
-   ```bash
-   sudo cp music-server.service /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable music-server
-   sudo systemctl start music-server
-   ```
+
+   The setup script will ask you to choose:
+   - **Option 1:** Default service for user "pi"
+   - **Option 2:** Custom service for any username
+
+   The script will automatically:
+   - Configure the service with correct paths
+   - Install and enable the service
+   - Start the service
 
    **Or start manually:**
    ```bash
@@ -213,18 +216,36 @@ journalctl -u music-server -f
 http://cubie-server.local:5001
 ```
 
-**Custom Username:** To use a different username instead of "pi", use the template service file:
+**Custom Username:** To use a different username instead of "pi", run the setup script:
 
 ```bash
-# Copy the template service file
-sudo cp music-server@.service /etc/systemd/system/
+# Use the setup script - it handles everything automatically
+sudo ./setup.sh
 
-# Enable and start with your username
+# Select option 2 (Custom: username)
+# Enter your username when prompted
+```
+
+The setup script will:
+- Detect your username
+- Modify the service file with actual paths
+- Install and start the service
+
+**Manual installation (advanced):** If you prefer to install manually, copy the template and modify it:
+
+```bash
+# Copy template
+cp music-server@.service /tmp/music-server@yourname.service
+
+# Modify with actual paths
+sed -i 's|%h|/home/YOUR_USERNAME|g; s|%i|YOUR_USERNAME|g' /tmp/music-server@yourname.service
+
+# Install with sudo
+sudo cp /tmp/music-server@yourname.service /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl enable music-server@yourname
 sudo systemctl start music-server@yourname
 ```
-
-This will run the service as user "yourname" with all paths auto-detected.
 
 ### ⚠️ Important: Running as Root vs Service User
 

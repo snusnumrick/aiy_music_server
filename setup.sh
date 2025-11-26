@@ -92,20 +92,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     if [ "$EUID" -ne 0 ]; then
         echo -e "${YELLOW}⚠${NC} This script requires sudo for systemd setup"
         echo ""
-        if [[ $REPLY =~ ^[1]$ ]]; then
-            echo "Run these commands for default 'pi' user:"
-            echo "  sudo cp music-server.service /etc/systemd/system/"
-            echo "  sudo systemctl daemon-reload"
-            echo "  sudo systemctl enable music-server"
-            echo "  sudo systemctl start music-server"
-        else
-            echo "Run these commands for custom username:"
-            echo "  sudo cp music-server@.service /etc/systemd/system/"
-            echo "  sudo systemctl daemon-reload"
-            echo "  sudo systemctl enable music-server@YOUR_USERNAME"
-            echo "  sudo systemctl start music-server@YOUR_USERNAME"
-        fi
+        echo "Run these commands to install the service:"
+        echo "  chmod +x setup.sh"
+        echo "  sudo ./setup.sh"
         echo ""
+        exit 1
     else
         # Running as root - handle service installation properly
         if [[ $REPLY =~ ^[1]$ ]]; then
@@ -134,13 +125,24 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
                 fi
             fi
 
-            cp music-server.service /etc/systemd/system/
+            # Create a modified service file with actual paths (no %h specifiers)
+            SERVICE_FILE="/etc/systemd/system/music-server.service"
+            TEMP_FILE="/tmp/music-server-$$.service"
+
+            # Read the template and replace %h with actual home directory
+            sed "s|%h|$TARGET_HOME|g" music-server.service > "$TEMP_FILE"
+
+            # Copy the modified service file with sudo
+            cp "$TEMP_FILE" "$SERVICE_FILE"
+            rm "$TEMP_FILE"
+
+            # Use sudo for systemctl commands
             systemctl daemon-reload
             systemctl enable music-server
             systemctl start music-server
 
             echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user '$TARGET_USER'"
-            echo "Service is running as user: $(systemctl show -p MainPID music-server | cut -d= -f2)"
+            echo "Paths configured: $TARGET_HOME/music_server"
             echo ""
             echo "Check status with: sudo systemctl status music-server"
             echo "View logs with: sudo journalctl -u music-server -f"
@@ -171,13 +173,24 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
                     fi
                 fi
 
-                cp music-server@.service /etc/systemd/system/
+                # Create a modified service file with actual paths (no %i, %h specifiers)
+                SERVICE_FILE="/etc/systemd/system/music-server@$username.service"
+                TEMP_FILE="/tmp/music-server@$username-$$.service"
+
+                # Read the template and replace %h and %i with actual values
+                sed "s|%h|$TARGET_HOME|g; s|%i|$username|g" music-server@.service > "$TEMP_FILE"
+
+                # Copy the modified service file with sudo
+                cp "$TEMP_FILE" "$SERVICE_FILE"
+                rm "$TEMP_FILE"
+
+                # Use sudo for systemctl commands
                 systemctl daemon-reload
                 systemctl enable music-server@$username
                 systemctl start music-server@$username
 
                 echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user '$username'"
-                echo "Service is running as user: $(systemctl show -p MainPID music-server@$username | cut -d= -f2)"
+                echo "Paths configured: $TARGET_HOME/music_server"
                 echo ""
                 echo "Check status with: sudo systemctl status music-server@$username"
                 echo "View logs with: sudo journalctl -u music-server@$username -f"
