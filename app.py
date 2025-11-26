@@ -27,7 +27,7 @@ FILE_CHANGE_LOCK = threading.Lock()
 
 # mDNS Configuration
 ZEROCONF_INSTANCE = None
-SERVICE_NAME = "Cubie"
+SERVICE_NAME = "cubie-server"
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_PORT = 5001
 
@@ -234,6 +234,17 @@ def register_mdns_service():
     hostname = socket.gethostname()
     ip_address = get_local_ip()
 
+    # If hostname is "cubie", use "cubie.local"
+    # If hostname is anything else (e.g., "cubie-2"), use that as hostname.local
+    if hostname == SERVICE_NAME:
+        # Hostname matches service name, use it
+        server_hostname = f"{SERVICE_NAME.lower()}.local."
+        service_display_name = f"{SERVICE_NAME} ({hostname})"
+    else:
+        # Hostname is different (e.g., cubie-2), use it
+        server_hostname = f"{hostname}.local."
+        service_display_name = f"{SERVICE_NAME} (on {hostname})"
+
     try:
         # Create service info
         service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}"
@@ -248,7 +259,7 @@ def register_mdns_service():
                 'path': '/',
                 'description': 'Music Server'
             },
-            server=f"{SERVICE_NAME.lower()}.local."  # Use "cubie.local" as the server
+            server=server_hostname
         )
 
         # Register the service
@@ -257,15 +268,16 @@ def register_mdns_service():
 
         ZEROCONF_INSTANCE = zeroconf
 
-        print(f"✓ mDNS service registered: http://{SERVICE_NAME.lower()}.local:{SERVICE_PORT}")
-        print(f"  - Service name: {SERVICE_NAME}")
+        print(f"✓ mDNS service registered: http://{server_hostname}:{SERVICE_PORT}")
+        print(f"  - Service: {service_display_name}")
         print(f"  - Local IP: {ip_address}")
-        print(f"  - mDNS hostname: {SERVICE_NAME.lower()}.local")
-        print(f"  - Actual hostname: {hostname}.local")
+        print(f"  - Hostname: {hostname}.local")
         print(f"  - Access URLs:")
-        print(f"    • http://{SERVICE_NAME.lower()}.local:{SERVICE_PORT}")
-        print(f"    • http://{hostname}.local:{SERVICE_PORT}")
+        print(f"    • http://{server_hostname}:{SERVICE_PORT}")
         print(f"    • http://{ip_address}:{SERVICE_PORT}")
+
+        if hostname != SERVICE_NAME:
+            print(f"  - Note: Using {hostname}.local (was renamed from {SERVICE_NAME})")
 
         return zeroconf
     except Exception as e:
