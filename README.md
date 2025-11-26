@@ -142,15 +142,18 @@ Simply copy MP3 files into the `music/` directory. The server will:
    ./setup.sh
    ```
 
-3. **Start the server:**
+3. **Setup systemd service (recommended for auto-start):**
    ```bash
-   # Manual start
-   source music_server/bin/activate
-   python app.py
-
-   # Or as service
+   sudo cp music-server.service /etc/systemd/system/
+   sudo systemctl daemon-reload
    sudo systemctl enable music-server
    sudo systemctl start music-server
+   ```
+
+   **Or start manually:**
+   ```bash
+   source music_server/bin/activate
+   python app.py
    ```
 
 4. **Access from your phone:**
@@ -176,32 +179,38 @@ sudo journalctl -u music-server -f
 
 ## Deployment (Production)
 
-### Option 1: Systemd Service (Recommended)
+### Systemd Service Setup (Recommended)
 
-1. Copy the service file:
+**1. Copy the service file to systemd directory:**
 ```bash
 sudo cp music-server.service /etc/systemd/system/
 ```
 
-2. Edit the service file to update paths:
-```bash
-sudo nano /etc/systemd/system/music-server.service
-```
-
-3. Enable and start:
+**2. Enable the service:**
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable music-server
 sudo systemctl start music-server
+```
+
+**3. Verify it's running:**
+```bash
 sudo systemctl status music-server
 ```
 
-4. View logs:
+**4. View logs:**
 ```bash
 journalctl -u music-server -f
 ```
 
-### Option 2: Manual Startup
+**5. Access your music server:**
+```
+http://cubie-server.local:5001
+```
+
+### Alternative: Manual Startup
+
+If you prefer not to use systemd, you can start manually:
 
 Add to `/etc/rc.local` (before `exit 0`):
 ```bash

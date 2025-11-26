@@ -85,9 +85,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Check if running as root or with sudo
     if [ "$EUID" -ne 0 ]; then
         echo -e "${YELLOW}⚠${NC} This script requires sudo for systemd setup"
-        echo "Run: sudo cp music-server.service /etc/systemd/system/"
-        echo "Then: sudo systemctl daemon-reload"
-        echo "And: sudo systemctl enable music-server"
+        echo ""
+        echo "IMPORTANT: Run these commands to install the systemd service:"
+        echo "  sudo cp music-server.service /etc/systemd/system/"
+        echo "  sudo systemctl daemon-reload"
+        echo "  sudo systemctl enable music-server"
+        echo "  sudo systemctl start music-server"
+        echo ""
     else
         cp music-server.service /etc/systemd/system/
         sed -i 's|/home/pi/music_server|'$(pwd)'|g' /etc/systemd/system/music-server.service
