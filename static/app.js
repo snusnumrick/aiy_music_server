@@ -92,16 +92,21 @@ function renderTrackList() {
                 </div>
                 <div class="track-actions">
                     <button class="action-btn" onclick="playTrack(${actualIndex})" title="${isPlaying ? 'Pause' : 'Play'}">
-                        ${isPlaying ? '⏸' : '▶️'}
+                        ${isPlaying ? '<i data-lucide="pause" class="w-7 h-7"></i>' : '<i data-lucide="play" class="w-7 h-7"></i>'}
                     </button>
-                    ${track.lyrics ? `<button class="action-btn fullscreen-btn" onclick="showFullscreenLyrics(${actualIndex})" title="Fullscreen Lyrics">📖</button>` : ''}
+                    ${track.lyrics ? `<button class="action-btn fullscreen-btn" onclick="showFullscreenLyrics(${actualIndex})" title="Fullscreen Lyrics"><i data-lucide="maximize" class="w-7 h-7"></i></button>` : ''}
                     <button class="action-btn delete-btn" onclick="confirmDeleteTrack(${actualIndex})" title="Delete">
-                        🗑️
+                        <i data-lucide="trash-2" class="w-7 h-7"></i>
                     </button>
                 </div>
             </div>
         `;
     }).join('');
+
+    // Initialize Lucide icons for the new elements
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 function playTrack(index) {
@@ -345,7 +350,12 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
     fetchMusic();
     startPolling();
 });

@@ -103,6 +103,11 @@ body {
     min-height: 48px;
 }
 
+.action-btn svg {
+    width: 28px;
+    height: 28px;
+}
+
 .action-btn:hover {
     background: #5568d3;
     transform: translateY(-1px);
