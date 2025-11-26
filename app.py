@@ -213,10 +213,10 @@ def register_mdns_service():
         print("mDNS not available (zeroconf not installed)")
         return None
 
-    try:
-        hostname = socket.gethostname()
-        ip_address = get_local_ip()
+    hostname = socket.gethostname()
+    ip_address = get_local_ip()
 
+    try:
         # Create service info
         service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}"
         addresses = [socket.inet_aton(ip_address)]
@@ -230,7 +230,7 @@ def register_mdns_service():
                 'path': '/',
                 'description': 'Music Server'
             },
-            server=f"{hostname}.local."
+            server=f"{SERVICE_NAME.lower()}.local."  # Use "cubie.local" as the server
         )
 
         # Register the service
@@ -239,15 +239,21 @@ def register_mdns_service():
 
         ZEROCONF_INSTANCE = zeroconf
 
-        print(f"✓ mDNS service registered: http://{SERVICE_NAME}.local:{SERVICE_PORT}")
+        print(f"✓ mDNS service registered: http://{SERVICE_NAME.lower()}.local:{SERVICE_PORT}")
         print(f"  - Service name: {SERVICE_NAME}")
         print(f"  - Local IP: {ip_address}")
-        print(f"  - Hostname: {hostname}.local")
-        print(f"  - URL: http://{hostname}.local:{SERVICE_PORT}")
+        print(f"  - mDNS hostname: {SERVICE_NAME.lower()}.local")
+        print(f"  - Actual hostname: {hostname}.local")
+        print(f"  - Access URLs:")
+        print(f"    • http://{SERVICE_NAME.lower()}.local:{SERVICE_PORT}")
+        print(f"    • http://{hostname}.local:{SERVICE_PORT}")
+        print(f"    • http://{ip_address}:{SERVICE_PORT}")
 
         return zeroconf
     except Exception as e:
         print(f"⚠ Warning: Could not register mDNS service: {e}")
+        print(f"  You can still access the server at: http://{ip_address}:{SERVICE_PORT}")
+        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
         return None
 
 def unregister_mdns_service():
@@ -295,8 +301,10 @@ if __name__ == '__main__':
 
     try:
         print("\nStarting server on http://0.0.0.0:5001")
-        if ZEROCONF_AVAILABLE:
+        if zeroconf_instance:
             print(f"✓ mDNS enabled: Access via http://cubie.local:5001")
+        else:
+            print("⚠ mDNS disabled: Using IP address instead")
         print("Press Ctrl+C to stop")
         print("=" * 50)
         app.run(host='0.0.0.0', port=5001, debug=False)

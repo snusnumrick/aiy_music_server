@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Network Discovery** - Implemented ServiceInfo registration with Zeroconf
 - **Graceful Shutdown** - Service unregisters properly on shutdown
 - **Hostname Integration** - Uses system hostname + .local for registration
+- **Logging Improvements** - Fixed mDNS registration status reporting
+
+### Fixed
+- **Conflicting Log Messages** - Startup messages now accurately reflect mDNS registration status
+  - Success: Shows "✓ mDNS enabled" only when registration succeeds
+  - Failure: Shows "⚠ mDNS disabled" with helpful alternative URLs
 
 ### Documentation
 - Added mDNS troubleshooting section to README.md

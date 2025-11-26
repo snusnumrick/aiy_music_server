@@ -1,8 +1,9 @@
 [Unit]
-Description=AIY Music Server
+Description=Cubie Music Server (mDNS: cubie.local)
 Documentation=https://github.com/your-username/aiy_media_server
 After=network.target network-online.target
 Wants=network-online.target
+Requires=network-online.target
 
 [Service]
 Type=simple

@@ -125,6 +125,55 @@ Simply copy MP3 files into the `music/` directory. The server will:
   - Multiple exit options: Close button (×), "← Back" button, ESC key, or tap outside
 - **Auto-Refresh**: Polls server every 3 seconds for new files
 
+## Deploy to Raspberry Pi Zero
+
+### Quick Deployment
+
+1. **Transfer files to Pi:**
+   ```bash
+   scp -r music_server/ pi@192.168.X.X:~/
+   ```
+
+2. **SSH into Pi and setup:**
+   ```bash
+   ssh pi@192.168.X.X
+   cd ~/music_server
+   chmod +x setup.sh
+   ./setup.sh
+   ```
+
+3. **Start the server:**
+   ```bash
+   # Manual start
+   source music_server/bin/activate
+   python app.py
+
+   # Or as service
+   sudo systemctl enable music-server
+   sudo systemctl start music-server
+   ```
+
+4. **Access from your phone:**
+   ```
+   http://cubie.local:5001
+   ```
+
+**That's it!** The service will be discoverable as "cubie.local" on your network.
+
+### Verify mDNS on Pi
+
+```bash
+# Check service is registered
+curl http://localhost:5001/api/health | jq
+
+# Browse mDNS services
+avahi-browse -a -t | grep -i cubie
+
+# Check systemd service status
+sudo systemctl status music-server
+sudo journalctl -u music-server -f
+```
+
 ## Deployment (Production)
 
 ### Option 1: Systemd Service (Recommended)
