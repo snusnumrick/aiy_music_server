@@ -24,13 +24,29 @@ body {
 
 .track-item {
     background: rgba(255, 255, 255, 0.95);
-    margin-bottom: 16px;
-    padding: 20px;
-    border-radius: 16px;
+    margin-bottom: 12px;
+    padding: 14px;
+    border-radius: 14px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     transition: transform 0.2s, box-shadow 0.2s;
     cursor: pointer;
     border: 2px solid transparent;
+}
+
+@media (min-width: 640px) {
+    .track-item {
+        margin-bottom: 14px;
+        padding: 16px;
+        border-radius: 15px;
+    }
+}
+
+@media (min-width: 768px) {
+    .track-item {
+        margin-bottom: 16px;
+        padding: 20px;
+        border-radius: 16px;
+    }
 }
 
 .track-item:active {
@@ -45,39 +61,97 @@ body {
 }
 
 .track-title {
-    font-size: 1.5rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: #333;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     word-wrap: break-word;
     line-height: 1.3;
 }
 
+@media (min-width: 640px) {
+    .track-title {
+        font-size: 1.25rem;
+        margin-bottom: 7px;
+    }
+}
+
+@media (min-width: 768px) {
+    .track-title {
+        font-size: 1.5rem;
+        margin-bottom: 8px;
+    }
+}
+
 .track-artist {
-    font-size: 1.2rem;
+    font-size: 1rem;
     color: #666;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     line-height: 1.3;
+}
+
+@media (min-width: 640px) {
+    .track-artist {
+        font-size: 1.1rem;
+        margin-bottom: 11px;
+    }
+}
+
+@media (min-width: 768px) {
+    .track-artist {
+        font-size: 1.2rem;
+        margin-bottom: 12px;
+    }
 }
 
 .track-meta {
     display: flex;
     justify-content: space-between;
-    font-size: 1.1rem;
+    font-size: 0.9rem;
     color: #999;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
+}
+
+@media (min-width: 640px) {
+    .track-meta {
+        font-size: 1rem;
+        margin-bottom: 11px;
+    }
+}
+
+@media (min-width: 768px) {
+    .track-meta {
+        font-size: 1.1rem;
+        margin-bottom: 12px;
+    }
 }
 
 .track-lyrics-preview {
-    font-size: 1.2rem;
+    font-size: 0.95rem;
     color: #777;
     font-style: italic;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    line-height: 1.6;
+    line-height: 1.5;
+}
+
+@media (min-width: 640px) {
+    .track-lyrics-preview {
+        font-size: 1.05rem;
+        margin-bottom: 11px;
+        line-height: 1.55;
+    }
+}
+
+@media (min-width: 768px) {
+    .track-lyrics-preview {
+        font-size: 1.2rem;
+        margin-bottom: 12px;
+        line-height: 1.6;
+    }
 }
 
 .track-actions {
@@ -90,22 +164,54 @@ body {
     background: #667eea;
     color: white;
     border: none;
-    padding: 10px;
-    border-radius: 10px;
-    font-size: 1.4rem;
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 1.2rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 48px;
-    min-height: 48px;
+    min-width: 40px;
+    min-height: 40px;
+}
+
+@media (min-width: 640px) {
+    .action-btn {
+        padding: 9px;
+        border-radius: 9px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+@media (min-width: 768px) {
+    .action-btn {
+        padding: 10px;
+        border-radius: 10px;
+        min-width: 48px;
+        min-height: 48px;
+    }
 }
 
 .action-btn svg {
-    width: 28px;
-    height: 28px;
+    width: 22px;
+    height: 22px;
+}
+
+@media (min-width: 640px) {
+    .action-btn svg {
+        width: 25px;
+        height: 25px;
+    }
+}
+
+@media (min-width: 768px) {
+    .action-btn svg {
+        width: 28px;
+        height: 28px;
+    }
 }
 
 .action-btn:hover {

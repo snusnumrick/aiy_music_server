@@ -1,8 +1,6 @@
 let musicData = [];
 let currentTrackIndex = -1;
 let filteredTracks = [];
-const POLLING_INTERVAL = 3000;
-let pollingTimer = null;
 let currentFontSize = 'medium';
 let deleteTrackIndex = null;
 
@@ -264,19 +262,6 @@ async function refreshMetadata() {
     }
 }
 
-function startPolling() {
-    pollingTimer = setInterval(() => {
-        fetchMusic();
-    }, POLLING_INTERVAL);
-}
-
-function stopPolling() {
-    if (pollingTimer) {
-        clearInterval(pollingTimer);
-        pollingTimer = null;
-    }
-}
-
 //elements.refreshBtn.addEventListener('click', refreshMetadata);
 
 //elements.searchInput.addEventListener('input', () => {
@@ -357,9 +342,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     fetchMusic();
-    startPolling();
-});
-
-window.addEventListener('beforeunload', () => {
-    stopPolling();
 });
