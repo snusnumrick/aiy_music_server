@@ -12,8 +12,8 @@ const elements = {
     errorMessage: document.getElementById('error-message'),
     status: document.getElementById('status'),
     fileCount: document.getElementById('file-count'),
-    refreshBtn: document.getElementById('refresh-btn'),
-    searchInput: document.getElementById('search-input'),
+//    refreshBtn: document.getElementById('refresh-btn'),
+//    searchInput: document.getElementById('search-input'),
     audioPlayer: document.getElementById('audio-player'),
     currentTitle: document.getElementById('current-title'),
     currentArtist: document.getElementById('current-artist'),
@@ -48,7 +48,7 @@ function updateUI() {
         elements.loading.style.display = 'none';
     }
 
-    const searchTerm = elements.searchInput.value.toLowerCase().trim();
+//    const searchTerm = elements.searchInput.value.toLowerCase().trim();
 
     if (searchTerm) {
         filteredTracks = musicData.filter(track =>
@@ -277,11 +277,11 @@ function stopPolling() {
     }
 }
 
-elements.refreshBtn.addEventListener('click', refreshMetadata);
+//elements.refreshBtn.addEventListener('click', refreshMetadata);
 
-elements.searchInput.addEventListener('input', () => {
-    updateUI();
-});
+//elements.searchInput.addEventListener('input', () => {
+//    updateUI();
+//});
 
 elements.audioPlayer.addEventListener('play', () => {
     elements.status.textContent = 'Playing';
