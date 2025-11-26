@@ -48,7 +48,7 @@ function updateUI() {
         elements.loading.style.display = 'none';
     }
 
-//    const searchTerm = elements.searchInput.value.toLowerCase().trim();
+    const searchTerm = ""; //elements.searchInput.value.toLowerCase().trim();
 
     if (searchTerm) {
         filteredTracks = musicData.filter(track =>
