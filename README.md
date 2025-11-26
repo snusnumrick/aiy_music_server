@@ -6,15 +6,27 @@ A lightweight music server designed for Raspberry Pi Zero that automatically det
 
 - 🎵 **Automatic Detection**: Watchdog file monitoring detects new MP3 files instantly
 - 📱 **Mobile-Friendly**: Responsive web interface optimized for phones
-- 🏷️ **Metadata Support**: Reads ID3 tags for title, artist, and lyrics
+- 🏷️ **Metadata Support**: Reads ID3 tags for title, artist, and lyrics (ID3v2.3/2.4)
 - ⏯️ **Built-in Player**: HTML5 audio player with next/previous controls
 - 🔍 **Search & Filter**: Find tracks quickly by title or artist
 - 📄 **Lyrics Display**: View full lyrics in modal overlay
-- 📖 **Fullscreen Lyrics**: Immersive full-screen lyrics view with font size controls
+- 📖 **Fullscreen Lyrics**: Immersive full-screen lyrics view with adjustable font size (3 sizes)
 - ⚡ **Real-time Updates**: Auto-refreshes every 3 seconds
 - 🎨 **Modern UI**: Dark/light theme support with gradient backgrounds
+- 🔧 **File Monitoring**: Debounced file system watcher prevents partial reads
 
 ## Quick Start
+
+### Prerequisites
+
+```bash
+# Install ffmpeg (required for creating test files)
+# On macOS:
+brew install ffmpeg
+
+# On Raspberry Pi:
+sudo apt update && sudo apt install ffmpeg
+```
 
 ### 1. Install Dependencies
 
@@ -30,7 +42,7 @@ pip install -r requirements.txt
 python create_test_music.py
 ```
 
-This creates 8 sample MP3 files with various metadata scenarios.
+This creates 8 sample MP3 files with various metadata scenarios including lyrics.
 
 ### 3. Start the Server
 
@@ -38,7 +50,9 @@ This creates 8 sample MP3 files with various metadata scenarios.
 python app.py
 ```
 
-The server will start on `http://localhost:5000` (or `http://0.0.0.0:5000` for network access).
+The server will start on `http://localhost:5001` (or `http://0.0.0.0:5001` for network access).
+
+**Note:** The default port is 5001 (changed from 5000 to avoid conflicts with AirPlay Receiver on macOS).
 
 ### 4. Access from Your Phone
 
@@ -47,7 +61,7 @@ Find your Pi's IP address:
 hostname -I
 ```
 
-Open your phone browser to: `http://192.168.x.x:5000`
+Open your phone browser to: `http://192.168.x.x:5001`
 
 ## Directory Structure
 
@@ -87,8 +101,11 @@ Simply copy MP3 files into the `music/` directory. The server will:
 - **Next Track**: Auto-advances when current track ends
 - **Search**: Filter tracks by title, artist, or filename
 - **Refresh Button**: Manual metadata reload
-- **Lyrics View**: Tap "Lyrics" button to see full text in modal
-- **Fullscreen Lyrics**: Tap "Fullscreen" button for immersive lyrics view with adjustable font size
+- **Lyrics View**: Tap "📄 Lyrics" button to see full text in modal overlay
+- **Fullscreen Lyrics**: Tap "📖 Fullscreen" button for immersive full-screen lyrics view
+  - Dark gradient background for better readability
+  - Adjustable font size: Small (A-), Medium (default), Large (A+)
+  - Multiple exit options: Close button (×), "← Back" button, ESC key, or tap outside
 - **Auto-Refresh**: Polls server every 3 seconds for new files
 
 ## Deployment (Production)
@@ -129,39 +146,58 @@ python app.py &
 
 ## Configuration
 
-### Environment Variables
+### Server Settings
 
-You can modify these in `app.py`:
+You can modify these settings in `app.py`:
 
 ```python
 MUSIC_FOLDER = os.path.join(os.path.dirname(__file__), 'music')  # Music directory
 DEBOUNCE_DELAY = 0.5  # File change debounce (seconds)
 POLLING_INTERVAL = 3000  # Client refresh rate (milliseconds)
-PORT = 5000  # Server port
 ```
 
-### Port Change
+### Port Configuration
 
-To change the default port (5000), edit `app.py`:
+**Default port: 5001**
+
+The server defaults to port 5001 (not 5000) to avoid conflicts with macOS AirPlay Receiver.
+
+To change the port, edit the `app.run()` call at the bottom of `app.py`:
 
 ```python
-app.run(host='0.0.0.0', port=5000, debug=False)
+app.run(host='0.0.0.0', port=5001, debug=False)
 ```
+
+Change `port=5001` to your desired port (e.g., `port=8080`).
 
 ## Troubleshooting
 
 ### Server won't start
 
 ```bash
-# Check if port is in use
-sudo netstat -tlnp | grep :5000
+# Check if port is in use (default port is 5001)
+sudo netstat -tlnp | grep :5001
 
 # Check Python version (need 3.6+)
 python3 --version
 
 # Verify virtual environment
 which python  # Should be in music_server/bin/
+
+# Check if ffmpeg is installed (needed for test file creation)
+ffmpeg -version
 ```
+
+### Port 5000 in use
+
+The server runs on port **5001** by default. If you see "Address already in use" for port 5001:
+
+```bash
+# Find and kill the process using port 5001
+lsof -ti:5001 | xargs kill -9
+```
+
+Or edit `app.py` and change `port=5001` to a different port.
 
 ### Music files not detected
 
@@ -170,18 +206,35 @@ which python  # Should be in music_server/bin/
 ls -la music/
 
 # Verify file monitoring
-curl http://localhost:5000/api/music
+curl http://localhost:5001/api/music
 
 # Check logs for errors
 python app.py
+
+# Ensure MP3 files are valid (not corrupted)
+file music/*.mp3
 ```
+
+### Lyrics not showing (Empty lyrics field)
+
+This issue was fixed in v1.1. The server now properly reads USLT tags from MP3 files. If you see empty lyrics:
+
+1. Ensure your MP3 files have lyrics embedded (USLT tag)
+2. Check the API response:
+   ```bash
+   curl http://localhost:5001/api/music | jq
+   ```
+3. Verify MP3 has lyrics using mutagen:
+   ```bash
+   python3 -c "from mutagen.mp3 import MP3; print(MP3('music/song.mp3').tags)"
+   ```
 
 ### Phone can't connect
 
 ```bash
 # Verify server is listening on all interfaces
-netstat -tlnp | grep :5000
-# Should show 0.0.0.0:5000, not 127.0.0.1:5000
+netstat -tlnp | grep :5001
+# Should show 0.0.0.0:5001, not 127.0.0.1:5001
 
 # Check firewall
 sudo ufw status

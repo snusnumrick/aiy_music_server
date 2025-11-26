@@ -2,6 +2,18 @@
 
 Get your AIY Music Server running in 5 minutes!
 
+## Prerequisites
+
+**Install ffmpeg** (required for creating test files):
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Raspberry Pi
+sudo apt update && sudo apt install ffmpeg
+```
+
 ## For Raspberry Pi Zero
 
 ### Option 1: Automated Setup (Recommended)
@@ -31,7 +43,7 @@ source music_server/bin/activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Create test files
+# 3. Create test files (requires ffmpeg)
 python create_test_music.py
 
 # 4. Start server
@@ -53,8 +65,10 @@ python3 -m venv music_server && source music_server/bin/activate && pip install 
 
 2. **Open your phone browser to:**
    ```
-   http://192.168.X.X:5000
+   http://192.168.X.X:5001
    ```
+
+**Note:** The server runs on port **5001** (not 5000) to avoid conflicts.
 
 3. **Bookmark it!** Add to home screen for app-like experience
 
@@ -106,21 +120,24 @@ python create_test_music.py
 ✅ **Search** - Find songs quickly
 ✅ **Play Button** - Tap to play/pause
 ✅ **Lyrics** - View full lyrics in modal
+✅ **Fullscreen Lyrics** - Tap "📖 Fullscreen" for immersive view with adjustable font
 ✅ **Auto-Refresh** - New files appear automatically
 ✅ **Mobile-Optimized** - Works great on phone
+
+Each track shows 3 action buttons: **[Play]** **[Lyrics]** **[Fullscreen]**
 
 ### API Testing
 
 Check the API directly:
 ```bash
 # Get all music
-curl http://localhost:5000/api/music
+curl http://localhost:5001/api/music
 
 # Health check
-curl http://localhost:5000/api/health
+curl http://localhost:5001/api/health
 
 # Force refresh
-curl -X POST http://localhost:5000/api/refresh
+curl -X POST http://localhost:5001/api/refresh
 ```
 
 ## Troubleshooting
@@ -129,15 +146,15 @@ curl -X POST http://localhost:5000/api/refresh
 
 ```bash
 # Verify server is running and listening on all interfaces
-netstat -tlnp | grep :5000
-# Should show 0.0.0.0:5000
+netstat -tlnp | grep :5001
+# Should show 0.0.0.0:5001
 ```
 
 ### Port already in use?
 
 ```bash
 # Find and kill the process
-sudo lsof -ti:5000 | xargs sudo kill -9
+lsof -ti:5001 | xargs kill -9
 ```
 
 ### No music showing?
@@ -154,7 +171,7 @@ chmod 644 music/*.mp3
 
 Edit `app.py` and change:
 ```python
-app.run(host='0.0.0.0', port=5000, debug=False)
+app.run(host='0.0.0.0', port=5001, debug=False)
 ```
 to:
 ```python

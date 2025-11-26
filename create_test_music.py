@@ -2,6 +2,14 @@
 """
 Create test MP3 files with metadata for testing the AIY Music Server.
 This script generates sample MP3 files with ID3 tags for testing purposes.
+
+Prerequisites:
+- ffmpeg must be installed and in PATH
+  macOS: brew install ffmpeg
+  Raspberry Pi: sudo apt install ffmpeg
+
+The script creates 8 test MP3 files with various metadata scenarios,
+including tracks with and without lyrics.
 """
 
 import os
