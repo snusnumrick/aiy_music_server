@@ -181,6 +181,11 @@ sudo journalctl -u music-server -f
 
 ### Systemd Service Setup (Recommended)
 
+**Portable Configuration:** The service file uses systemd specifiers (`%h` for home directory) to automatically detect paths. This means it works regardless of:
+- Username (defaults to "pi", can be overridden)
+- Installation location (works in any directory)
+- No manual path editing required!
+
 **1. Copy the service file to systemd directory:**
 ```bash
 sudo cp music-server.service /etc/systemd/system/
@@ -207,6 +212,19 @@ journalctl -u music-server -f
 ```
 http://cubie-server.local:5001
 ```
+
+**Custom Username:** To use a different username instead of "pi", use the template service file:
+
+```bash
+# Copy the template service file
+sudo cp music-server@.service /etc/systemd/system/
+
+# Enable and start with your username
+sudo systemctl enable music-server@yourname
+sudo systemctl start music-server@yourname
+```
+
+This will run the service as user "yourname" with all paths auto-detected.
 
 ### Alternative: Manual Startup
 

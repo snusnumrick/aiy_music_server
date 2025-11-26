@@ -81,24 +81,49 @@ echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     echo "Setting up systemd service..."
+    echo ""
+    echo "Choose your installation type:"
+    echo "  1) Default: For user 'pi' (standard Raspberry Pi setup)"
+    echo "  2) Custom: For any username (e.g., 'bob', 'alex', etc.)"
+    read -p "Select option (1 or 2): " -n 1 -r
+    echo ""
 
     # Check if running as root or with sudo
     if [ "$EUID" -ne 0 ]; then
         echo -e "${YELLOW}⚠${NC} This script requires sudo for systemd setup"
         echo ""
-        echo "IMPORTANT: Run these commands to install the systemd service:"
-        echo "  sudo cp music-server.service /etc/systemd/system/"
-        echo "  sudo systemctl daemon-reload"
-        echo "  sudo systemctl enable music-server"
-        echo "  sudo systemctl start music-server"
+        if [[ $REPLY =~ ^[1]$ ]]; then
+            echo "Run these commands for default 'pi' user:"
+            echo "  sudo cp music-server.service /etc/systemd/system/"
+            echo "  sudo systemctl daemon-reload"
+            echo "  sudo systemctl enable music-server"
+            echo "  sudo systemctl start music-server"
+        else
+            echo "Run these commands for custom username:"
+            echo "  sudo cp music-server@.service /etc/systemd/system/"
+            echo "  sudo systemctl daemon-reload"
+            echo "  sudo systemctl enable music-server@YOUR_USERNAME"
+            echo "  sudo systemctl start music-server@YOUR_USERNAME"
+        fi
         echo ""
     else
-        cp music-server.service /etc/systemd/system/
-        sed -i 's|/home/pi/music_server|'$(pwd)'|g' /etc/systemd/system/music-server.service
-        systemctl daemon-reload
-        systemctl enable music-server
-        echo -e "${GREEN}✓${NC} Systemd service installed and enabled"
-        echo "Start with: sudo systemctl start music-server"
+        if [[ $REPLY =~ ^[1]$ ]]; then
+            cp music-server.service /etc/systemd/system/
+            systemctl daemon-reload
+            systemctl enable music-server
+            echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user 'pi'"
+            echo "Start with: sudo systemctl start music-server"
+        else
+            read -p "Enter username to run service as: " username
+            if [ ! -z "$username" ]; then
+                cp music-server@.service /etc/systemd/system/
+                systemctl daemon-reload
+                systemctl enable music-server@$username
+                systemctl start music-server@$username
+                echo -e "${GREEN}✓${NC} Systemd service installed and enabled for user '$username'"
+                echo "Manage with: sudo systemctl status music-server@$username"
+            fi
+        fi
     fi
 fi
 

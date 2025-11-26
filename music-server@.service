@@ -1,5 +1,5 @@
 [Unit]
-Description=cubie-server Music Server (mDNS: cubie-server.local)
+Description=cubie-server Music Server (mDNS: cubie-server.local) for user %i
 Documentation=https://github.com/snusnumrick/aiy_media_server
 After=network.target network-online.target
 Wants=network-online.target
@@ -8,13 +8,12 @@ Requires=network-online.target
 [Service]
 Type=simple
 
-# Username - hardcoded for default service
-# To run as a different user, install as: music-server@customname.service
-User=pi
-Group=pi
+# Use %i (instance name) which becomes the username
+# When installed as "music-server@bob.service", %i="bob"
+User=%i
+Group=%i
 
-# Auto-detect home directory using %h specifier
-# Works regardless of installation location or username
+# Auto-detect home directory - %h/%i are available in all directives
 WorkingDirectory=%h/music_server
 
 # Auto-detect Python path
@@ -31,7 +30,7 @@ RestartSec=5
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=music-server
+SyslogIdentifier=music-server@%i
 
 # Security settings
 NoNewPrivileges=true
