@@ -92,19 +92,13 @@ class MusicEventHandler(FileSystemEventHandler):
 
 def load_metadata():
     """Load metadata from all MP3 files in the music folder"""
-    global METADATA_CACHE
-    metadata_list = []
-
-    if not os.path.exists(MUSIC_FOLDER):
-        os.makedirs(MUSIC_FOLDER)
-        METADATA_CACHE = metadata_list
-        return
-
+    print("Starting load_metadata...")
     for filename in os.listdir(MUSIC_FOLDER):
         if not filename.endswith('.mp3'):
             continue
 
         filepath = os.path.join(MUSIC_FOLDER, filename)
+        print(f"  Processing file: {filename}")
 
         try:
             audio = MP3(filepath)
@@ -133,8 +127,8 @@ def load_metadata():
                             lyrics = str(lyrics_value.text)
                         else:
                             lyrics = str(lyrics_value)
-            except (ID3NoHeaderError, AttributeError, Exception):
-                pass
+            except (ID3NoHeaderError, AttributeError, Exception) as e:
+                print(f"    Warning: Could not read ID3 tags for {filename}: {e}")
 
             file_stat = os.stat(filepath)
             duration = audio.info.length if hasattr(audio.info, 'length') else 0
@@ -150,14 +144,15 @@ def load_metadata():
             }
 
             metadata_list.append(metadata)
+            print(f"  Finished processing: {filename}")
 
         except Exception as e:
-            print(f"Error processing {filename}: {e}")
+            print(f"  Error processing {filename}: {e}")
             continue
 
     metadata_list.sort(key=lambda x: x['filename'])
     METADATA_CACHE = metadata_list
-    print(f"Loaded {len(metadata_list)} music files")
+    print(f"Finished load_metadata. Loaded {len(metadata_list)} music files")
 
 def get_music_folder():
     """Get the music folder path (for local services on same machine)"""
