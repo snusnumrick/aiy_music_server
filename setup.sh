@@ -80,7 +80,8 @@ echo -e "${GREEN}✓${NC} Music directory ready"
 
 # Create test MP3 files
 echo ""
-read -p "Create test MP3 files? (y/n) " -n 1 -r
+# Removed '-n 1' so it waits for Enter
+read -p "Create test MP3 files? (y/n) " -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Creating test files..."
@@ -94,7 +95,8 @@ fi
 
 # Systemd service setup
 echo ""
-read -p "Setup systemd service? (y/n) " -n 1 -r
+# Removed '-n 1' so it waits for Enter
+read -p "Setup systemd service? (y/n) " -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
