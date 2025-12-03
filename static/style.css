@@ -248,7 +248,7 @@ body {
 }
 
 .fullscreen-lyrics {
-    display: none;
+    display: block;
 }
 
 .fullscreen-lyrics.hidden {
