@@ -11,6 +11,10 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import threading
 
+# Force unbuffered output
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 try:
     from zeroconf import ServiceInfo, Zeroconf
     ZEROCONF_AVAILABLE = True
@@ -46,15 +50,8 @@ class MusicEventHandler(FileSystemEventHandler):
         if not event.src_path.endswith('.mp3'):
             return
 
-        current_time = time.time()
-        if current_time - self.last_change_time < self.debounce_delay:
-            return
-
-        self.last_change_time = current_time
-        time.sleep(self.debounce_delay)
-
-        with FILE_CHANGE_LOCK:
-            load_metadata()
+        print(f"File created: {event.src_path}")
+        self._trigger_reload()
 
     def on_deleted(self, event):
         if event.is_directory:
@@ -63,15 +60,8 @@ class MusicEventHandler(FileSystemEventHandler):
         if not event.src_path.endswith('.mp3'):
             return
 
-        current_time = time.time()
-        if current_time - self.last_change_time < self.debounce_delay:
-            return
-
-        self.last_change_time = current_time
-        time.sleep(self.debounce_delay)
-
-        with FILE_CHANGE_LOCK:
-            load_metadata()
+        print(f"File deleted: {event.src_path}")
+        self._trigger_reload()
 
     def on_modified(self, event):
         if event.is_directory:
@@ -80,6 +70,10 @@ class MusicEventHandler(FileSystemEventHandler):
         if not event.src_path.endswith('.mp3'):
             return
 
+        print(f"File modified: {event.src_path}")
+        self._trigger_reload()
+
+    def _trigger_reload(self):
         current_time = time.time()
         if current_time - self.last_change_time < self.debounce_delay:
             return
@@ -87,26 +81,30 @@ class MusicEventHandler(FileSystemEventHandler):
         self.last_change_time = current_time
         time.sleep(self.debounce_delay)
 
+        print("Acquiring lock for metadata reload...")
         with FILE_CHANGE_LOCK:
+            print("Lock acquired. Reloading metadata...")
             load_metadata()
+            print("Metadata reload complete.")
 
 def load_metadata():
     """Load metadata from all MP3 files in the music folder"""
-    print("Starting load_metadata...")
     global METADATA_CACHE
+    print("Starting load_metadata function...")
     metadata_list = []
 
     if not os.path.exists(MUSIC_FOLDER):
+        print(f"Music folder not found: {MUSIC_FOLDER}. Creating it.")
         os.makedirs(MUSIC_FOLDER)
         METADATA_CACHE = metadata_list
         return
 
-    for filename in os.listdir(MUSIC_FOLDER):
-        if not filename.endswith('.mp3'):
-            continue
+    files = [f for f in os.listdir(MUSIC_FOLDER) if f.endswith('.mp3')]
+    print(f"Found {len(files)} MP3 files to process.")
 
+    for filename in files:
         filepath = os.path.join(MUSIC_FOLDER, filename)
-        print(f"  Processing file: {filename}")
+        # print(f"  Processing: {filename}") 
 
         try:
             audio = MP3(filepath)
@@ -152,7 +150,6 @@ def load_metadata():
             }
 
             metadata_list.append(metadata)
-            print(f"  Finished processing: {filename}")
 
         except Exception as e:
             print(f"  Error processing {filename}: {e}")
@@ -160,7 +157,7 @@ def load_metadata():
 
     metadata_list.sort(key=lambda x: x['filename'])
     METADATA_CACHE = metadata_list
-    print(f"Finished load_metadata. Loaded {len(metadata_list)} music files")
+    print(f"Finished load_metadata. Cache updated with {len(metadata_list)} items.")
 
 def get_music_folder():
     """Get the music folder path (for local services on same machine)"""
@@ -274,7 +271,21 @@ def tailscale_down():
 @app.route('/api/music')
 def get_music():
     """Return JSON array of music files with metadata"""
+    print("Received request: GET /api/music")
+    
+    # Check if cache is empty and try to load if it is
+    if not METADATA_CACHE:
+        print("Cache is empty. Attempting to load metadata...")
+        # We don't use the lock here to avoid potential deadlock if the lock is already held by a stuck observer?
+        # Actually, if we are here, we are in a request thread.
+        # If observer holds the lock, we wait.
+        with FILE_CHANGE_LOCK:
+             if not METADATA_CACHE: # Double check
+                 load_metadata()
+    
+    print("Acquiring lock to read metadata...")
     with FILE_CHANGE_LOCK:
+        print(f"Returning {len(METADATA_CACHE)} tracks.")
         return jsonify(METADATA_CACHE)
 
 @app.route('/music/<filename>')
@@ -285,6 +296,7 @@ def stream_music(filename):
 @app.route('/api/refresh', methods=['POST'])
 def refresh_metadata():
     """Manually trigger metadata reload"""
+    print("Received request: POST /api/refresh")
     with FILE_CHANGE_LOCK:
         load_metadata()
     return jsonify({'status': 'success', 'count': len(METADATA_CACHE)})
@@ -479,8 +491,6 @@ if __name__ == '__main__':
     print(f"Music folder: {MUSIC_FOLDER}")
 
     load_metadata()
-
-    print(f"Loaded {len(METADATA_CACHE)} music files")
 
     # Register mDNS service
     zeroconf_instance = None
