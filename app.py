@@ -35,6 +35,10 @@ SERVICE_NAME = "cubie-server"
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_PORT = 5001
 
+# WiFi Configuration
+WIFI_CONFIG_PATH = "/etc/wpa_supplicant/wpa_supplicant.conf"
+INTERNET_AVAILABLE = False
+
 class MusicEventHandler(FileSystemEventHandler):
     """Handle file system events for music folder"""
 
@@ -166,6 +170,12 @@ def get_music_folder():
 @app.route('/')
 def index():
     """Serve the main web interface"""
+    # Check if internet is available
+    check_internet_connection()
+    if not INTERNET_AVAILABLE:
+        # Redirect to WiFi setup page if offline
+        from flask import redirect
+        return redirect('/setup-wifi')
     return send_from_directory('static', 'index.html')
 
 @app.route('/api/tailscale/status')
@@ -360,6 +370,56 @@ def support_page():
     """Serve the support page"""
     return send_from_directory('static', 'support.html')
 
+@app.route('/setup-wifi')
+def wifi_setup_page():
+    """Serve the WiFi setup page"""
+    return send_from_directory('static', 'wifi-setup.html')
+
+@app.route('/api/wifi/networks')
+def wifi_networks():
+    """Get list of available WiFi networks"""
+    result = scan_wifi_networks()
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 500
+
+@app.route('/api/wifi/configure', methods=['POST'])
+def wifi_configure():
+    """Configure WiFi with provided credentials"""
+    data = request.get_json()
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': 'No data provided'
+        }), 400
+
+    ssid = data.get('ssid')
+    password = data.get('password')
+
+    if not ssid:
+        return jsonify({
+            'success': False,
+            'error': 'SSID is required'
+        }), 400
+
+    if not password:
+        return jsonify({
+            'success': False,
+            'error': 'Password is required'
+        }), 400
+
+    result = configure_wifi(ssid, password)
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 500
+
+@app.route('/api/wifi/status')
+def wifi_status():
+    """Get current WiFi connection status"""
+    return jsonify(get_wifi_status()), 200
+
 def get_local_ip():
     """Get the local IP address of the machine"""
     try:
@@ -372,6 +432,196 @@ def get_local_ip():
     except Exception:
         return "127.0.0.1"
 
+def check_internet_connection():
+    """Check if internet connection is available"""
+    global INTERNET_AVAILABLE
+    try:
+        # Try to connect to a reliable external server
+        test_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        test_socket.settimeout(2)
+        test_socket.connect(("8.8.8.8", 53))
+        ip = test_socket.getsockname()[0]
+        test_socket.close()
+        INTERNET_AVAILABLE = True
+        return True
+    except Exception:
+        INTERNET_AVAILABLE = False
+        return False
+
+def scan_wifi_networks():
+    """Scan for available WiFi networks using iwlist"""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['sudo', 'iwlist', 'wlan0', 'scan'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode != 0:
+            return {
+                'success': False,
+                'error': f'iwlist command failed: {result.stderr}'
+            }
+
+        networks = []
+        current_network = {}
+        lines = result.stdout.split('\n')
+
+        for line in lines:
+            line = line.strip()
+
+            if 'ESSID:' in line:
+                essid = line.split('ESSID:')[1].strip('"')
+                if essid and essid not in [n['ssid'] for n in networks]:
+                    # Save previous network if exists
+                    if current_network and 'ssid' in current_network:
+                        networks.append(current_network)
+                    # Start new network
+                    current_network = {'ssid': essid}
+
+            elif 'Encryption key:' in line:
+                encryption = line.split('Encryption key:')[1].strip()
+                current_network['encryption'] = 'off' if encryption == 'off' else 'on'
+
+            elif 'IE: IEEE 802.11i/WPA2' in line:
+                current_network['security'] = 'WPA2'
+            elif 'IE: WPA Version' in line:
+                current_network['security'] = 'WPA'
+
+            elif 'Quality=' in line:
+                # Extract signal strength if available
+                quality_part = line.split('Quality=')[1].split(' ')[0]
+                current_network['signal'] = quality_part
+
+        # Add the last network
+        if current_network and 'ssid' in current_network:
+            networks.append(current_network)
+
+        # Sort by signal strength if available
+        networks.sort(key=lambda x: x.get('signal', '0'), reverse=True)
+
+        return {
+            'success': True,
+            'networks': networks
+        }
+
+    except subprocess.TimeoutExpired:
+        return {
+            'success': False,
+            'error': 'WiFi scan timed out'
+        }
+    except FileNotFoundError:
+        return {
+            'success': False,
+            'error': 'iwlist command not found. Make sure wireless-tools is installed.'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error scanning WiFi: {str(e)}'
+        }
+
+def configure_wifi(ssid, password):
+    """Configure WiFi by writing to wpa_supplicant.conf"""
+    try:
+        # Create wpa_supplicant config content
+        config_content = f'''country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+network={{
+    ssid="{ssid}"
+    psk="{password}"
+    key_mgmt=WPA-PSK
+}}
+'''
+
+        # Write config file with sudo
+        import subprocess
+        result = subprocess.run(
+            ['sudo', 'bash', '-c', f'echo "{config_content}" > {WIFI_CONFIG_PATH}'],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            return {
+                'success': False,
+                'error': f'Failed to write config: {result.stderr}'
+            }
+
+        # Restart wpa_supplicant to apply changes
+        subprocess.run(
+            ['sudo', 'systemctl', 'restart', 'dhcpcd'],
+            capture_output=True,
+            timeout=30
+        )
+
+        return {
+            'success': True,
+            'message': 'WiFi configuration applied. Please restart the server.'
+        }
+
+    except subprocess.TimeoutExpired:
+        return {
+            'success': False,
+            'error': 'Timeout while restarting network service'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error configuring WiFi: {str(e)}'
+        }
+
+def get_wifi_status():
+    """Get current WiFi connection status"""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['iwconfig', 'wlan0'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            return {
+                'connected': False,
+                'error': 'Could not get WiFi status'
+            }
+
+        output = result.stdout
+
+        # Check if connected
+        if 'ESSID:' in output:
+            essid_line = [line for line in output.split('\n') if 'ESSID:' in line][0]
+            essid = essid_line.split('ESSID:')[1].strip()
+
+            if essid and essid != 'off/any':
+                # Get signal strength
+                signal_line = [line for line in output.split('\n') if 'Signal level=' in line][0]
+                signal = signal_line.split('Signal level=')[1].split(' ')[0]
+
+                return {
+                    'connected': True,
+                    'ssid': essid,
+                    'signal': signal,
+                    'interface': 'wlan0'
+                }
+
+        return {
+            'connected': False,
+            'interface': 'wlan0'
+        }
+
+    except Exception as e:
+        return {
+            'connected': False,
+            'error': str(e)
+        }
+
 def register_mdns_service():
     """Register mDNS service for network discovery"""
     global ZEROCONF_INSTANCE
@@ -381,22 +631,14 @@ def register_mdns_service():
         print("Install with: pip install zeroconf")
         return None
 
-    # Wait for network to be ready (helps on Pi Zero with slow WiFi)
+    # Check network connectivity using the new function
     import time
     print("Checking network connectivity...")
-    for i in range(5):
-        try:
-            test_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            test_socket.settimeout(1)
-            test_socket.connect(("8.8.8.8", 53))
-            ip = test_socket.getsockname()[0]
-            test_socket.close()
-            print(f"✓ Network ready")
-            break
-        except Exception:
-            time.sleep(1)
-            if i == 4:
-                print(f"⚠ Network not fully ready - continuing anyway")
+    if check_internet_connection():
+        print("✓ Internet connection available")
+    else:
+        print("⚠ No internet connection detected")
+        print("  WiFi setup required. Visit /setup-wifi to configure WiFi")
 
     hostname = socket.gethostname()
     ip_address = get_local_ip()
@@ -489,6 +731,15 @@ if __name__ == '__main__':
     print("=" * 50)
 
     print(f"Music folder: {MUSIC_FOLDER}")
+
+    # Check internet connectivity on startup
+    print("\nChecking internet connection...")
+    if check_internet_connection():
+        print("✓ Internet connection available")
+    else:
+        print("⚠ No internet connection detected")
+        print("  WiFi setup is required to get internet access")
+        print("  Visit http://localhost:5001/setup-wifi to configure WiFi")
 
     load_metadata()
 

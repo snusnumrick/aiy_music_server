@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>WiFi Setup - Cubie Music Server</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📶</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#667eea',
+                        secondary: '#764ba2',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-gradient-to-br from-primary to-secondary min-h-screen">
+    <div class="max-w-2xl mx-auto min-h-screen flex flex-col p-4 md:p-8">
+        <!-- Header -->
+        <header class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-lg p-6 md:p-8 rounded-2xl mb-4 md:mb-8">
+            <div class="flex items-center gap-4">
+                <i data-lucide="wifi" class="w-12 h-12 md:w-16 md:h-16 text-primary"></i>
+                <div>
+                    <h1 class="text-2xl md:text-4xl font-bold text-primary mb-2">WiFi Setup</h1>
+                    <p class="text-gray-600 dark:text-gray-300 text-base md:text-lg">Configure your WiFi connection</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Status Message -->
+        <div id="status-message" class="bg-blue-500 text-white p-4 md:p-6 rounded-2xl text-center text-lg mb-4 md:mb-8 shadow-lg" style="display: none;"></div>
+
+        <!-- Loading -->
+        <div id="loading" class="loading flex-1 flex flex-col items-center justify-center text-white">
+            <div class="spinner w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mb-6"></div>
+            <p class="text-2xl">Scanning for WiFi networks...</p>
+        </div>
+
+        <!-- Error -->
+        <div id="error-message" class="error bg-red-500 text-white p-4 md:p-6 rounded-2xl text-center text-lg mb-4 shadow-lg" style="display: none;"></div>
+
+        <!-- WiFi Setup Form -->
+        <div id="wifi-setup-form" class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-lg p-6 md:p-8 rounded-2xl mb-4 md:mb-8" style="display: none;">
+            <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">Select WiFi Network</h2>
+
+            <!-- Network Selection -->
+            <div class="mb-6">
+                <label class="block text-base md:text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Available Networks
+                </label>
+                <select id="network-select" class="w-full py-4 px-6 text-lg border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:border-primary focus:outline-none bg-white dark:bg-gray-700 dark:text-white transition-all">
+                    <option value="">Loading networks...</option>
+                </select>
+            </div>
+
+            <!-- Selected Network Info -->
+            <div id="network-info" class="mb-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-xl" style="display: none;">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="wifi" class="w-5 h-5 text-primary"></i>
+                    <span id="selected-ssid" class="font-semibold text-gray-800 dark:text-gray-100"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i data-lucide="lock" class="w-5 h-5 text-gray-600 dark:text-gray-400"></i>
+                    <span id="security-type" class="text-gray-600 dark:text-gray-400"></span>
+                </div>
+            </div>
+
+            <!-- Password Field -->
+            <div class="mb-6">
+                <label class="block text-base md:text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Password
+                </label>
+                <div class="relative">
+                    <input type="password" id="wifi-password" placeholder="Enter WiFi password"
+                           class="w-full py-4 px-6 text-lg border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:border-primary focus:outline-none bg-white dark:bg-gray-700 dark:text-white transition-all pr-16">
+                    <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+                        <i data-lucide="eye" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Connect Button -->
+            <button id="connect-btn" class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 px-6 rounded-xl transition-all transform hover:scale-105 active:scale-95 shadow-lg text-lg">
+                <span class="flex items-center justify-center gap-2">
+                    <i data-lucide="wifi" class="w-6 h-6"></i>
+                    Connect
+                </span>
+            </button>
+
+            <!-- Success Message & Restart Button -->
+            <div id="success-message" class="mt-6 p-4 bg-green-100 dark:bg-green-900/50 rounded-xl" style="display: none;">
+                <div class="flex items-center gap-2 mb-4">
+                    <i data-lucide="check-circle" class="w-6 h-6 text-green-600"></i>
+                    <p class="text-lg font-semibold text-green-800 dark:text-green-200">WiFi configured successfully!</p>
+                </div>
+                <p class="text-green-700 dark:text-green-300 mb-4">Please restart the server to connect to the new network.</p>
+                <button id="restart-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-xl transition-all transform hover:scale-105 active:scale-95 shadow-lg text-lg">
+                    <span class="flex items-center justify-center gap-2">
+                        <i data-lucide="rotate-cw" class="w-6 h-6"></i>
+                        Restart Server
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Help Text -->
+        <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-lg p-6 md:p-8 rounded-2xl">
+            <h3 class="text-lg md:text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Need Help?</h3>
+            <div class="space-y-3 text-gray-600 dark:text-gray-300">
+                <p class="flex items-start gap-2">
+                    <i data-lucide="info" class="w-5 h-5 mt-1 flex-shrink-0 text-primary"></i>
+                    <span>Make sure your Raspberry Pi is within range of your WiFi network.</span>
+                </p>
+                <p class="flex items-start gap-2">
+                    <i data-lucide="info" class="w-5 h-5 mt-1 flex-shrink-0 text-primary"></i>
+                    <span>After configuring WiFi, the server will restart automatically.</span>
+                </p>
+                <p class="flex items-start gap-2">
+                    <i data-lucide="info" class="w-5 h-5 mt-1 flex-shrink-0 text-primary"></i>
+                    <span>Once restarted, visit <strong>http://cubie.local:5001</strong> to access the music server.</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/wifi-setup.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
