@@ -155,7 +155,7 @@ function showFullscreenLyrics(index) {
     document.getElementById('fullscreen-artist').textContent = track.artist;
     document.getElementById('fullscreen-lyrics-content').textContent = track.lyrics || 'No lyrics available';
     document.getElementById('fullscreen-lyrics').classList.remove('hidden');
-    document.getElementById('fullscreen-lyrics').style.display = 'block';
+    document.getElementById('fullscreen-lyrics').style.display = 'flex';
 
     currentFontSize = 'medium';
     updateFontSize();
