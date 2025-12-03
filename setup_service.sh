@@ -51,7 +51,6 @@ Environment="PATH=${WORKING_DIR}/music_server/bin:/home/${SUDO_USER}/.pyenv/shim
 Environment="HOME=/home/${SUDO_USER}"
 WorkingDirectory=${WORKING_DIR}
 ExecStartPre=/bin/sleep 10
-ExecStart=/bin/bash -c "${SCRIPTS_DIR}/run.sh"
 ExecStart=${WORKING_DIR}/music_server/bin/python ${WORKING_DIR}/app.py
 
 # Reload handler

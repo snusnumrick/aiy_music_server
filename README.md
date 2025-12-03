@@ -227,53 +227,13 @@ sudo ./setup.sh
 ```
 
 The setup script will:
-- Detect your username
-- Modify the service file with actual paths
-- Install and start the service
+- ✅ Verify you have sudo access
+- ✅ Ask which user to run the service as
+- ✅ Modify the service file with actual paths (no specifiers!)
+- ✅ Install the service with correct permissions
+- ✅ Enable and start the service
 
-**Manual installation (advanced):** If you prefer to install manually, copy the template and modify it:
-
-```bash
-# Copy template
-cp music-server@.service /tmp/music-server@yourname.service
-
-# Modify with actual paths
-sed -i 's|%h|/home/YOUR_USERNAME|g; s|%i|YOUR_USERNAME|g' /tmp/music-server@yourname.service
-
-# Install with sudo
-sudo cp /tmp/music-server@yourname.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable music-server@yourname
-sudo systemctl start music-server@yourname
-```
-
-### ⚠️ Important: Running as Root vs Service User
-
-When you run `sudo cp` and `sudo systemctl`, you're running commands **as root**, but the service should run as the specified user (pi or custom).
-
-**The issue:** If paths don't exist for the target user, the service fails.
-
-**The solution:** Use the setup script which verifies everything:
-
-```bash
-chmod +x setup.sh
-sudo ./setup.sh
-```
-
-The script will check:
-- User exists
-- Paths exist for that user
-- Service runs as the correct user
-
-**Verify the service user manually:**
-```bash
-# Check actual user running the service
-ps aux | grep "[p]ython.*app.py"
-
-# Should show: pi (or your username), NOT root
-```
-
-For troubleshooting, see: `SYSTEMD_USER_TROUBLESHOOTING.md`
+**Note:** The script handles all sudo operations internally - just run it once with sudo!
 
 ### Alternative: Manual Startup
 
