@@ -27,7 +27,7 @@ FILE_CHANGE_LOCK = threading.Lock()
 
 # mDNS Configuration
 ZEROCONF_INSTANCE = None
-SERVICE_NAME = "aiy-server"
+SERVICE_NAME = "cubie-server"
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_PORT = 5001
 

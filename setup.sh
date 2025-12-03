@@ -11,8 +11,8 @@ echo "=================================================="
 echo ""
 
 # Define variables
-SERVICE_NAME="aiy-server"
-SERVICE_DESCRIPTION="AIY Server (mDNS: aiy-server.local)"
+SERVICE_NAME="cubie-server"
+SERVICE_DESCRIPTION="AIY Server (mDNS: cubie-server.local)"
 
 # Get the directory where this script is located
 WORKING_DIR="$(dirname "$(readlink -f "$0")")"
