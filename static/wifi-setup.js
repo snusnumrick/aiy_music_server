@@ -92,7 +92,13 @@ function displayNetworks() {
             else signalIndicator = '📶';
         }
 
-        option.textContent = `${signalIndicator} ${network.ssid} (${security})`;
+        // Mark hidden networks
+        if (network.hidden) {
+            option.textContent = `${signalIndicator} [Hidden Network] (${security})`;
+        } else {
+            option.textContent = `${signalIndicator} ${network.ssid} (${security})`;
+        }
+
         networkSelectEl.appendChild(option);
     });
 }
@@ -111,7 +117,23 @@ function handleNetworkSelection() {
     selectedNetwork = networks.find(n => n.ssid === selectedSsid);
 
     if (selectedNetwork) {
-        selectedSsidEl.textContent = selectedNetwork.ssid;
+        // Handle hidden network
+        if (selectedNetwork.hidden) {
+            // Show dialog to enter SSID
+            const actualSsid = prompt('Enter the hidden network name (SSID):');
+            if (!actualSsid) {
+                networkSelectEl.value = '';
+                return;
+            }
+            // Create a new network object with the actual SSID
+            selectedNetwork = {
+                ...selectedNetwork,
+                ssid: actualSsid,
+                actualSsid: actualSsid
+            };
+        }
+
+        selectedSsidEl.textContent = selectedNetwork.actualSsid || selectedNetwork.ssid;
 
         let security = 'Open';
         if (selectedNetwork.security) {

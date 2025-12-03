@@ -452,6 +452,7 @@ def scan_wifi_networks():
     """Scan for available WiFi networks using iwlist"""
     try:
         import subprocess
+        print("Scanning for WiFi networks...")
         result = subprocess.run(
             ['sudo', 'iwlist', 'wlan0', 'scan'],
             capture_output=True,
@@ -459,7 +460,10 @@ def scan_wifi_networks():
             timeout=10
         )
 
+        print(f"iwlist exit code: {result.returncode}")
+
         if result.returncode != 0:
+            print(f"iwlist error: {result.stderr}")
             return {
                 'success': False,
                 'error': f'iwlist command failed: {result.stderr}'
@@ -469,35 +473,69 @@ def scan_wifi_networks():
         current_network = {}
         lines = result.stdout.split('\n')
 
+        print(f"Total lines in scan output: {len(lines)}")
+
         for line in lines:
             line = line.strip()
 
             if 'ESSID:' in line:
                 essid = line.split('ESSID:')[1].strip('"')
-                if essid and essid not in [n['ssid'] for n in networks]:
-                    # Save previous network if exists
-                    if current_network and 'ssid' in current_network:
-                        networks.append(current_network)
-                    # Start new network
+                print(f"Found ESSID: '{essid}'")
+
+                # Save previous network if exists
+                if current_network and 'ssid' in current_network:
+                    print(f"  Saving network: {current_network['ssid']}")
+                    networks.append(current_network)
+
+                # Start new network
+                if essid and essid != 'off/any':
+                    # Visible network
+                    print(f"  Adding visible network: {essid}")
                     current_network = {'ssid': essid}
+                elif essid == 'off/any':
+                    # Hidden network - create placeholder
+                    print("  Adding hidden network placeholder")
+                    current_network = {
+                        'ssid': 'Hidden Network',
+                        'hidden': True
+                    }
+                else:
+                    # Empty ESSID - treat as hidden
+                    print("  Adding empty ESSID as hidden")
+                    current_network = {
+                        'ssid': 'Hidden Network',
+                        'hidden': True
+                    }
 
             elif 'Encryption key:' in line:
-                encryption = line.split('Encryption key:')[1].strip()
-                current_network['encryption'] = 'off' if encryption == 'off' else 'on'
+                if current_network:  # Ensure we have a network to update
+                    encryption = line.split('Encryption key:')[1].strip()
+                    current_network['encryption'] = 'off' if encryption == 'off' else 'on'
+                    print(f"  Network {current_network.get('ssid', '?')} encryption: {current_network['encryption']}")
 
             elif 'IE: IEEE 802.11i/WPA2' in line:
-                current_network['security'] = 'WPA2'
+                if current_network:
+                    current_network['security'] = 'WPA2'
+                    print(f"  Network {current_network.get('ssid', '?')} security: WPA2")
             elif 'IE: WPA Version' in line:
-                current_network['security'] = 'WPA'
+                if current_network:
+                    current_network['security'] = 'WPA'
+                    print(f"  Network {current_network.get('ssid', '?')} security: WPA")
 
             elif 'Quality=' in line:
-                # Extract signal strength if available
-                quality_part = line.split('Quality=')[1].split(' ')[0]
-                current_network['signal'] = quality_part
+                if current_network:
+                    # Extract signal strength if available
+                    quality_part = line.split('Quality=')[1].split(' ')[0]
+                    current_network['signal'] = quality_part
 
         # Add the last network
         if current_network and 'ssid' in current_network:
+            print(f"Adding final network: {current_network['ssid']}")
             networks.append(current_network)
+
+        print(f"Total networks found: {len(networks)}")
+        for net in networks:
+            print(f"  - {net['ssid']}")
 
         # Sort by signal strength if available
         networks.sort(key=lambda x: x.get('signal', '0'), reverse=True)
@@ -508,16 +546,21 @@ def scan_wifi_networks():
         }
 
     except subprocess.TimeoutExpired:
+        print("WiFi scan timed out after 10 seconds")
         return {
             'success': False,
             'error': 'WiFi scan timed out'
         }
     except FileNotFoundError:
+        print("iwlist command not found")
         return {
             'success': False,
             'error': 'iwlist command not found. Make sure wireless-tools is installed.'
         }
     except Exception as e:
+        print(f"Exception during WiFi scan: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             'success': False,
             'error': f'Error scanning WiFi: {str(e)}'
