@@ -93,6 +93,14 @@ class MusicEventHandler(FileSystemEventHandler):
 def load_metadata():
     """Load metadata from all MP3 files in the music folder"""
     print("Starting load_metadata...")
+    global METADATA_CACHE
+    metadata_list = []
+
+    if not os.path.exists(MUSIC_FOLDER):
+        os.makedirs(MUSIC_FOLDER)
+        METADATA_CACHE = metadata_list
+        return
+
     for filename in os.listdir(MUSIC_FOLDER):
         if not filename.endswith('.mp3'):
             continue
