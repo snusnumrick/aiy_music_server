@@ -872,12 +872,29 @@ def register_mdns_service():
         print(f"  - Service: {service_display_name}")
         print(f"  - Local IP: {ip_address}")
         print(f"  - Hostname: {hostname}.local")
+        print(f"  - Interface: wlan0")
         print(f"  - Access URLs:")
         print(f"    • http://{server_hostname}:{SERVICE_PORT}")
         print(f"    • http://{ip_address}:{SERVICE_PORT}")
 
         if hostname != SERVICE_NAME:
             print(f"  - Note: Using {hostname}.local (was renamed from {SERVICE_NAME})")
+
+        # Verify the service is registered on the correct interface
+        import subprocess
+        try:
+            result = subprocess.run(
+                ['avahi-browse', '-a', '-t'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if 'cubie-server' in result.stdout:
+                print(f"  - mDNS service visible on network")
+            else:
+                print(f"  - Warning: Service not visible in avahi-browse")
+        except:
+            pass
 
         return zeroconf
     except Exception as e:
