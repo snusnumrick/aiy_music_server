@@ -378,49 +378,66 @@ def wifi_setup_page():
 @app.route('/api/wifi/networks')
 def wifi_networks():
     """Get list of available WiFi networks"""
-    result = scan_wifi_networks()
-    if result['success']:
-        return jsonify(result), 200
-    else:
-        return jsonify(result), 500
+    try:
+        result = scan_wifi_networks()
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'Error scanning networks: {str(e)}'
+        }), 500
 
 @app.route('/api/wifi/configure', methods=['POST'])
 def wifi_configure():
     """Configure WiFi with provided credentials"""
-    data = request.get_json()
-    if not data:
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+
+        ssid = data.get('ssid')
+        password = data.get('password')
+
+        if not ssid:
+            return jsonify({
+                'success': False,
+                'error': 'SSID is required'
+            }), 400
+
+        if not password:
+            return jsonify({
+                'success': False,
+                'error': 'Password is required'
+            }), 400
+
+        # Validate password length for WPA/WPA2
+        if len(password) < 8 or len(password) > 63:
+            return jsonify({
+                'success': False,
+                'error': 'WPA/WPA2 passwords must be between 8 and 63 characters long.'
+            }), 400
+
+        result = configure_wifi(ssid, password)
+        if result['success']:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 500
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': 'No data provided'
-        }), 400
-
-    ssid = data.get('ssid')
-    password = data.get('password')
-
-    if not ssid:
-        return jsonify({
-            'success': False,
-            'error': 'SSID is required'
-        }), 400
-
-    if not password:
-        return jsonify({
-            'success': False,
-            'error': 'Password is required'
-        }), 400
-
-    # Validate password length for WPA/WPA2
-    if len(password) < 8 or len(password) > 63:
-        return jsonify({
-            'success': False,
-            'error': 'WPA/WPA2 passwords must be between 8 and 63 characters long.'
-        }), 400
-
-    result = configure_wifi(ssid, password)
-    if result['success']:
-        return jsonify(result), 200
-    else:
-        return jsonify(result), 500
+            'error': f'Server error: {str(e)}'
+        }), 500
 
 @app.route('/api/wifi/status')
 def wifi_status():
@@ -564,6 +581,24 @@ def scan_wifi_networks():
     try:
         import subprocess
         print("Scanning for WiFi networks...")
+
+        # Check if wlan0 exists first
+        interface_check = subprocess.run(
+            ['ip', 'link', 'show', 'wlan0'],
+            capture_output=True,
+            text=True,
+            timeout=3
+        )
+
+        if interface_check.returncode != 0:
+            print("WARNING: wlan0 not found (Pi likely in hotspot mode)")
+            print("WiFi scan skipped - interface not available")
+            return {
+                'success': False,
+                'error': 'WiFi adapter not available (Pi in hotspot mode)',
+                'hotspot_mode': True
+            }
+
         result = subprocess.run(
             ['sudo', 'iwlist', 'wlan0', 'scan'],
             capture_output=True,
