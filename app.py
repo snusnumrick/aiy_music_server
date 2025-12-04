@@ -629,6 +629,23 @@ def scan_wifi_networks():
             'error': f'Error scanning WiFi: {str(e)}'
         }
 
+def restart_mdns_service():
+    """Restart mDNS service to update IP address"""
+    print("Restarting mDNS service...")
+    unregister_mdns_service()
+    
+    # Wait for IP address update
+    import time
+    max_retries = 10
+    for i in range(max_retries):
+        if check_internet_connection():
+            print("✓ Network connection established")
+            break
+        print(f"Waiting for network connection... ({i+1}/{max_retries})")
+        time.sleep(1)
+        
+    return register_mdns_service()
+
 def configure_wifi(ssid, password):
     """Configure WiFi by writing to wpa_supplicant.conf"""
     try:
@@ -636,7 +653,7 @@ def configure_wifi(ssid, password):
         # wpa_supplicant requires quotes around SSID and PSK
         escaped_ssid = ssid.replace('"', '\\"')
         escaped_password = password.replace('"', '\\"')
-
+        
         # Create wpa_supplicant config content with proper quotes
         config_content = f'''country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
@@ -718,10 +735,6 @@ network={{
             print("WiFi configuration reloaded successfully")
             print(f"wpa_cli output: {reconfigure_result.stdout.strip()}")
 
-            # Wait a moment for the connection to establish
-            # import time
-            # time.sleep(3)
-
             # Check if we can see the new SSID in scan results
             status_result = subprocess.run(
                 ['sudo', 'iwconfig', 'wlan0'],
@@ -733,10 +746,14 @@ network={{
             if status_result.returncode == 0:
                 print("WiFi interface status:")
                 print(status_result.stdout[:200] + "..." if len(status_result.stdout) > 200 else status_result.stdout)
+                
+                # Update mDNS service with new IP
+                if ZEROCONF_AVAILABLE:
+                    restart_mdns_service()
 
                 return {
                     'success': True,
-                    'message': 'WiFi configuration applied and reloaded. Please restart the music server to ensure connection.',
+                    'message': 'WiFi connected! mDNS service updated. You can now access the server at http://cubie.local:5001',
                     'reboot_required': False
                 }
             else:
