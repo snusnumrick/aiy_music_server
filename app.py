@@ -31,11 +31,20 @@ def handle_exception(e):
     import traceback
     traceback.print_exc()
 
+    # Print detailed error info
+    print(f"\n=== ERROR TRACEBACK ===")
+    print(f"Request path: {request.path}")
+    print(f"Request method: {request.method}")
+    print(f"Error type: {type(e).__name__}")
+    print(f"Error message: {str(e)}")
+    print(f"===================\n")
+
     # For API routes, return JSON
     if request.path.startswith('/api/'):
         return jsonify({
             'success': False,
-            'error': f'Server error: {str(e)}'
+            'error': f'Server error: {str(e)}',
+            'error_type': type(e).__name__
         }), 500
 
     # For other routes, return HTML error page
@@ -849,7 +858,7 @@ network={{
             if status_result.returncode == 0:
                 print("WiFi interface status:")
                 print(status_result.stdout[:200] + "..." if len(status_result.stdout) > 200 else status_result.stdout)
-                
+
                 # Update mDNS service with new IP
                 if ZEROCONF_AVAILABLE:
                     restart_mdns_service()
@@ -859,15 +868,14 @@ network={{
                     'message': 'WiFi connected! mDNS service updated. You can now access the server at http://cubie.local:5001',
                     'reboot_required': False
                 }
-            else:
-                print(f"wpa_cli reconfigure failed (likely offline or in hotspot mode)")
-                print(f"This is normal - configuration will take effect on server restart")
-
-                return {
-                    'success': True,
-                    'message': 'WiFi configuration saved. Please restart the music server to connect to the new network.',
-                    'reboot_required': False
-                }
+        else:
+            # wpa_cli failed - config is saved, needs reboot to apply
+            print(f"wpa_cli reconfigure failed: {reconfigure_result.stderr}")
+            return {
+                'success': True,
+                'message': 'WiFi configuration saved. A reboot is required to connect to the new network.',
+                'reboot_required': True
+            }
     except FileNotFoundError:
         # wpa_cli not found - this is OK, just save the config
         print("wpa_cli not found - WiFi configuration saved for next restart")
