@@ -484,14 +484,62 @@ def wifi_reboot():
         }), 500
 
 def get_local_ip():
-    """Get the local IP address of the machine"""
+    """Get the local IP address of the machine, robust to offline networks"""
+    # 1. Try connecting to an external server (most reliable if internet available)
     try:
-        # Create a socket to determine local IP
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
         return ip
+    except Exception:
+        pass
+
+    # 2. Try getting IP from hostname -I (linux)
+    try:
+        import subprocess
+        result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=1)
+        if result.returncode == 0:
+            ips = result.stdout.strip().split()
+            for ip in ips:
+                # Return first non-loopback IPv4
+                if '.' in ip and not ip.startswith('127.'):
+                    return ip
+    except Exception:
+        pass
+
+    # 3. Try parsing ip addr show
+    try:
+        import subprocess
+        # Try standard paths
+        cmds = [['ip', '-4', 'addr', 'show'], ['/sbin/ip', '-4', 'addr', 'show']]
+        
+        for cmd in cmds:
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=1)
+                if result.returncode == 0:
+                    output = result.stdout
+                    # Simple parsing for inet
+                    import re
+                    # Look for wlan0 first
+                    wlan_match = re.search(r'wlan0.*?inet\s+(\d+\.\d+\.\d+\.\d+)', output, re.DOTALL)
+                    if wlan_match:
+                        return wlan_match.group(1)
+                    
+                    # Look for any inet
+                    matches = re.findall(r'inet\s+(\d+\.\d+\.\d+\.\d+)', output)
+                    for ip in matches:
+                        if not ip.startswith('127.'):
+                            return ip
+            except FileNotFoundError:
+                continue
+    except Exception:
+        pass
+
+    # 4. Fallback to socket.gethostbyname (might return 127.0.1.1 on Debian)
+    try:
+        return socket.gethostbyname(socket.gethostname())
     except Exception:
         return "127.0.0.1"
 
@@ -638,9 +686,12 @@ def restart_mdns_service():
     import time
     max_retries = 10
     for i in range(max_retries):
-        if check_internet_connection():
-            print("✓ Network connection established")
+        # Check if we have a valid non-loopback IP
+        ip = get_local_ip()
+        if ip and not ip.startswith("127."):
+            print(f"✓ Network connection established (IP: {ip})")
             break
+            
         print(f"Waiting for network connection... ({i+1}/{max_retries})")
         time.sleep(1)
         
@@ -789,51 +840,116 @@ network={{
         }
 
 def get_wifi_status():
-    """Get current WiFi connection status"""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['iwconfig', 'wlan0'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+    """Get current WiFi connection status using iwconfig or iw"""
+    import subprocess
+    import shutil
 
-        if result.returncode != 0:
-            return {
-                'connected': False,
-                'error': 'Could not get WiFi status'
-            }
+    # Helper to run command
+    def run_cmd(cmd_list):
+        try:
+            return subprocess.run(
+                cmd_list,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            print(f"Error running {cmd_list[0]}: {e}")
+            return None
 
-        output = result.stdout
+    # 1. Try iwconfig (legacy but common)
+    # Check common paths if not in PATH
+    # Added sudo versions as fallback
+    iwconfig_cmds = [
+        ['iwconfig', 'wlan0'], 
+        ['/sbin/iwconfig', 'wlan0'], 
+        ['/usr/sbin/iwconfig', 'wlan0'],
+        ['sudo', 'iwconfig', 'wlan0'],
+        ['sudo', '/sbin/iwconfig', 'wlan0']
+    ]
+    
+    for cmd in iwconfig_cmds:
+        result = run_cmd(cmd)
+        if result and result.returncode == 0:
+            output = result.stdout
+            if 'ESSID:' in output:
+                try:
+                    essid = output.split('ESSID:')[1].split('\n')[0].strip('"').strip()
+                    
+                    signal = "N/A"
+                    if 'Signal level=' in output:
+                        signal_part = output.split('Signal level=')[1].split()[0]
+                        # Sometimes it is quality=xx/xx, sometimes level=-xx dBm
+                        if 'dBm' in output or int(signal_part) < 0:
+                             signal = f"{signal_part} dBm"
+                        else:
+                             # quality
+                             signal = f"Quality: {signal_part}"
+                    
+                    if essid and essid != 'off/any':
+                        return {
+                            'connected': True,
+                            'ssid': essid,
+                            'signal': signal,
+                            'interface': 'wlan0'
+                        }
+                except Exception as e:
+                    print(f"Error parsing iwconfig: {e}")
+            
+            # If we ran successfully but didn't return, it might be disconnected or parsing failed
+            if 'ESSID:off/any' in output or 'ESSID:""' in output:
+                 return {'connected': False, 'interface': 'wlan0'}
 
-        # Check if connected
-        if 'ESSID:' in output:
-            essid_line = [line for line in output.split('\n') if 'ESSID:' in line][0]
-            essid = essid_line.split('ESSID:')[1].strip()
+    # 2. Try iw (modern replacement)
+    # iw dev wlan0 link
+    # Added sudo versions as fallback
+    iw_cmds = [
+        ['iw', 'dev', 'wlan0', 'link'], 
+        ['/usr/sbin/iw', 'dev', 'wlan0', 'link'], 
+        ['/sbin/iw', 'dev', 'wlan0', 'link'],
+        ['sudo', 'iw', 'dev', 'wlan0', 'link'],
+        ['sudo', '/usr/sbin/iw', 'dev', 'wlan0', 'link']
+    ]
+    
+    for cmd in iw_cmds:
+        result = run_cmd(cmd)
+        if result:
+            if result.returncode == 0:
+                output = result.stdout
+                if 'Not connected' in output:
+                    return {'connected': False, 'interface': 'wlan0'}
+                
+                try:
+                    # Parse iw output
+                    ssid = "Unknown"
+                    signal = "N/A"
+                    
+                    for line in output.split('\n'):
+                        line = line.strip()
+                        if line.startswith('SSID:'):
+                            ssid = line.split('SSID:')[1].strip()
+                        elif line.startswith('signal:'):
+                            signal = line.split('signal:')[1].strip()
+                    
+                    if ssid != "Unknown":
+                        return {
+                            'connected': True,
+                            'ssid': ssid,
+                            'signal': signal,
+                            'interface': 'wlan0'
+                        }
+                except Exception as e:
+                    print(f"Error parsing iw: {e}")
+            else:
+                # iw failed (maybe interface down?)
+                pass
 
-            if essid and essid != 'off/any':
-                # Get signal strength
-                signal_line = [line for line in output.split('\n') if 'Signal level=' in line][0]
-                signal = signal_line.split('Signal level=')[1].split(' ')[0]
-
-                return {
-                    'connected': True,
-                    'ssid': essid,
-                    'signal': signal,
-                    'interface': 'wlan0'
-                }
-
-        return {
-            'connected': False,
-            'interface': 'wlan0'
-        }
-
-    except Exception as e:
-        return {
-            'connected': False,
-            'error': str(e)
-        }
+    return {
+        'connected': False,
+        'error': 'Could not determine WiFi status (iwconfig/iw missing or failed)'
+    }
 
 def register_mdns_service():
     """Register mDNS service for network discovery"""
@@ -847,14 +963,22 @@ def register_mdns_service():
     # Check network connectivity using the new function
     import time
     print("Checking network connectivity...")
-    if check_internet_connection():
+    
+    local_ip = get_local_ip()
+    has_internet = check_internet_connection()
+    
+    if has_internet:
         print("✓ Internet connection available")
+    elif local_ip and not local_ip.startswith("127."):
+        print(f"✓ Local network connected (IP: {local_ip})")
+        print("  ⚠ No internet access (Local Mode)")
     else:
-        print("⚠ No internet connection detected")
+        print("⚠ No network connection detected")
         print("  WiFi setup required. Visit /setup-wifi to configure WiFi")
 
     hostname = socket.gethostname()
-    ip_address = get_local_ip()
+    # Use the robust IP we just fetched
+    ip_address = local_ip
 
     # If hostname is "cubie", use "cubie.local"
     # If hostname is anything else (e.g., "cubie-2"), use that as hostname.local
