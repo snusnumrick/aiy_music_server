@@ -175,11 +175,18 @@ async function connectToWiFi() {
 
     const password = passwordEl.value;
 
-    // Check if password is required
-    if ((selectedNetwork.encryption === 'on' || selectedNetwork.security) && !password) {
-        showError('This network requires a password');
-        passwordEl.focus();
-        return;
+    // Check if password is required and valid length for WPA/WPA2
+    if (selectedNetwork.encryption === 'on' || selectedNetwork.security) {
+        if (!password) {
+            showError('This network requires a password');
+            passwordEl.focus();
+            return;
+        }
+        if (password.length < 8 || password.length > 63) {
+            showError('WPA/WPA2 passwords must be between 8 and 63 characters long.');
+            passwordEl.focus();
+            return;
+        }
     }
 
     // Show loading state
@@ -205,13 +212,11 @@ async function connectToWiFi() {
             throw new Error(data.error || 'Failed to configure WiFi');
         }
 
-        // Check if reboot is required (wlan0 not available - normal in hotspot mode)
         if (data.reboot_required) {
-            showRebootError('Pi is in hotspot mode. Reboot required to connect to WiFi.');
-            return;
+            showRebootError(data.message || 'Pi is in hotspot mode. Reboot required to connect to WiFi.');
+        } else {
+            showSuccess(data.message || 'WiFi configuration saved. Restart the server to connect to the new network.');
         }
-
-        showSuccess('WiFi configuration applied successfully!');
 
     } catch (error) {
         console.error('Error configuring WiFi:', error);

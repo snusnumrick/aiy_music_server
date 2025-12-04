@@ -409,6 +409,13 @@ def wifi_configure():
             'error': 'Password is required'
         }), 400
 
+    # Validate password length for WPA/WPA2
+    if len(password) < 8 or len(password) > 63:
+        return jsonify({
+            'success': False,
+            'error': 'WPA/WPA2 passwords must be between 8 and 63 characters long.'
+        }), 400
+
     result = configure_wifi(ssid, password)
     if result['success']:
         return jsonify(result), 200
@@ -685,12 +692,11 @@ network={{
 
             return {
                 'success': True,
-                'message': 'WiFi configuration saved. The system will reboot to connect to the new network.',
+                'message': 'WiFi configuration saved successfully. A system reboot is required to connect to the new network.',
                 'reboot_required': True
             }
 
         print("WiFi interface wlan0 detected")
-
         # Try to bring up the interface if it's down
         print("Ensuring WiFi interface is up...")
         subprocess.run(
@@ -713,8 +719,8 @@ network={{
             print(f"wpa_cli output: {reconfigure_result.stdout.strip()}")
 
             # Wait a moment for the connection to establish
-            import time
-            time.sleep(3)
+            # import time
+            # time.sleep(3)
 
             # Check if we can see the new SSID in scan results
             status_result = subprocess.run(
@@ -728,21 +734,20 @@ network={{
                 print("WiFi interface status:")
                 print(status_result.stdout[:200] + "..." if len(status_result.stdout) > 200 else status_result.stdout)
 
-            return {
-                'success': True,
-                'message': 'WiFi configuration applied and reloaded. Please restart the server to connect.',
-                'reboot_required': False
-            }
-        else:
-            print(f"wpa_cli reconfigure failed (likely offline or in hotspot mode)")
-            print(f"This is normal - configuration will take effect on server restart")
+                return {
+                    'success': True,
+                    'message': 'WiFi configuration applied and reloaded. Please restart the music server to ensure connection.',
+                    'reboot_required': False
+                }
+            else:
+                print(f"wpa_cli reconfigure failed (likely offline or in hotspot mode)")
+                print(f"This is normal - configuration will take effect on server restart")
 
-            return {
-                'success': True,
-                'message': 'WiFi configuration saved. Please restart the server to connect to the new network.',
-                'reboot_required': False
-            }
-
+                return {
+                    'success': True,
+                    'message': 'WiFi configuration saved. Please restart the music server to connect to the new network.',
+                    'reboot_required': False
+                }
     except FileNotFoundError:
         # wpa_cli not found - this is OK, just save the config
         print("wpa_cli not found - WiFi configuration saved for next restart")
