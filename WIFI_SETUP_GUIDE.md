@@ -28,6 +28,9 @@ When your Pi Zero is acting as a WiFi hotspot (e.g., during initial setup), you 
 The easiest way is to use the main setup script:
 1. Run `sudo ./setup.sh`
 2. Answer **"y"** when asked "Enable Captive Portal?".
+3. **Important**: During the installation of `iptables-persistent`, you will be prompted:
+   "Save current IPv4 rules?" -> **Answer "Yes"**
+   "Save current IPv6 rules?" -> You can answer "No" unless you have specific IPv6 rules.
 
 Alternatively, you can manually configure it:
 1. Enable IP forwarding: `echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward`

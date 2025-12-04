@@ -19,7 +19,7 @@ from pathlib import Path
 class CubieServerClient:
     """Client for interacting with cubie-server music server"""
 
-    def __init__(self, server_url='http://cubie-server.local:5001'):
+    def __init__(self, server_url='http://cubie.local:5001'):
         self.server_url = server_url
         self.config = None
         self.music_folder = None
