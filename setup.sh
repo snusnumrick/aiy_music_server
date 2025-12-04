@@ -234,8 +234,14 @@ EOF
             # Retry dnsmasq
             echo "Retrying dnsmasq start..."
             systemctl restart dnsmasq
-        else
-             echo -e "${RED}Error: dnsmasq failed to start. Please check 'systemctl status dnsmasq'${NC}"
+        fi
+        
+        # Check again if it failed
+        if ! systemctl is-active --quiet dnsmasq; then
+             echo -e "${RED}Error: dnsmasq failed to start.${NC}"
+             echo "--- dnsmasq logs ---"
+             journalctl -u dnsmasq -n 20 --no-pager
+             echo "--------------------"
         fi
     fi
     
