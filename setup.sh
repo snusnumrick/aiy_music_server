@@ -218,9 +218,30 @@ bind-interfaces
 EOF
 
     echo "Restarting dnsmasq..."
-    systemctl restart dnsmasq
+    if ! systemctl restart dnsmasq; then
+        echo -e "${YELLOW}⚠ dnsmasq failed to start. Checking for port 53 conflict...${NC}"
+        
+        # Check if systemd-resolved is using port 53
+        if lsof -i :53 | grep -q "systemd-r"; then
+            echo "Fixing conflict with systemd-resolved..."
+            # Disable stub listener in systemd-resolved
+            if [ -f /etc/systemd/resolved.conf ]; then
+                sed -i 's/#DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf
+                sed -i 's/DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf
+                systemctl restart systemd-resolved
+            fi
+            
+            # Retry dnsmasq
+            echo "Retrying dnsmasq start..."
+            systemctl restart dnsmasq
+        else
+             echo -e "${RED}Error: dnsmasq failed to start. Please check 'systemctl status dnsmasq'${NC}"
+        fi
+    fi
     
-    echo -e "${GREEN}✓${NC} Captive Portal enabled (DNS Sinkhole + Port Redirect)"
+    if systemctl is-active --quiet dnsmasq; then
+        echo -e "${GREEN}✓${NC} Captive Portal enabled (DNS Sinkhole + Port Redirect)"
+    fi
 fi
 
 echo ""
