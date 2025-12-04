@@ -214,7 +214,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 # Resolve all domains to the Pi's IP address
 address=/#/$WLAN_IP
 interface=wlan0
-bind-interfaces
+# bind-interfaces removed to avoid conflict with system default bind-dynamic
 EOF
 
     echo "Restarting dnsmasq..."
