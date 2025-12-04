@@ -24,6 +24,23 @@ except ImportError:
 
 app = Flask(__name__)
 
+# Add global error handler to ensure ALL errors return JSON
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Return JSON errors for all exceptions"""
+    import traceback
+    traceback.print_exc()
+
+    # For API routes, return JSON
+    if request.path.startswith('/api/'):
+        return jsonify({
+            'success': False,
+            'error': f'Server error: {str(e)}'
+        }), 500
+
+    # For other routes, return HTML error page
+    return str(e), 500
+
 # Configuration
 MUSIC_FOLDER = os.path.join(os.path.dirname(__file__), 'music')
 METADATA_CACHE = []
