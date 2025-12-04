@@ -183,7 +183,44 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Saving iptables rules..."
     iptables-save > /etc/iptables/rules.v4
     
-    echo -e "${GREEN}✓${NC} Captive Portal enabled"
+    # 5. Install and Configure dnsmasq for DNS Sinkhole
+    if ! command -v dnsmasq &> /dev/null; then
+        echo "Installing dnsmasq..."
+        apt-get update && apt-get install -y dnsmasq
+    fi
+
+    echo "Configuring dnsmasq address..."
+    # Back up original config
+    if [ ! -f /etc/dnsmasq.conf.bak ]; then
+        cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak
+    fi
+
+    # Create a dedicated config for the sinkhole
+    # We use address=/#/192.168.50.5 to resolve EVERYTHING to the Pi's IP
+    # Note: We need to dynamically determine the wlan0 IP to be safe, or assume the hotspot static IP
+    
+    # Try to get wlan0 IP
+    WLAN_IP=$(ip -4 addr show wlan0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    
+    if [ -z "$WLAN_IP" ]; then
+        echo -e "${YELLOW}Warning: Could not detect wlan0 IP. Assuming 192.168.50.5 (default hotspot)${NC}"
+        WLAN_IP="192.168.50.5"
+    else
+        echo "Detected wlan0 IP: $WLAN_IP"
+    fi
+
+    cat << EOF > /etc/dnsmasq.d/captive_portal.conf
+# AIY Music Server Captive Portal
+# Resolve all domains to the Pi's IP address
+address=/#/$WLAN_IP
+interface=wlan0
+bind-interfaces
+EOF
+
+    echo "Restarting dnsmasq..."
+    systemctl restart dnsmasq
+    
+    echo -e "${GREEN}✓${NC} Captive Portal enabled (DNS Sinkhole + Port Redirect)"
 fi
 
 echo ""
