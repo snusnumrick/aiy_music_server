@@ -10,10 +10,36 @@ The music server now includes a built-in WiFi setup page that allows you to conf
 
 1. **Startup Check**: When the server starts, it checks for internet connectivity
 2. **Auto-Redirect**: If no internet is detected, accessing the root URL (`/`) automatically redirects to the WiFi setup page
-3. **Manual Access**: You can also manually visit `/setup-wifi` to configure WiFi
-4. **Network Scan**: The setup page scans for available WiFi networks and displays them
-5. **Configuration**: Select a network, enter the password, and click "Connect"
-6. **Restart**: After successful configuration, restart the server to connect to the new network
+3. **Captive Portal (Optional)**: If enabled, devices connecting to the hotspot will be automatically redirected to the WiFi setup page when they try to access any website.
+4. **Manual Access**: You can also manually visit `/setup-wifi` to configure WiFi
+5. **Network Scan**: The setup page scans for available WiFi networks and displays them
+6. **Configuration**: Select a network, enter the password, and click "Connect"
+7. **Restart**: After successful configuration, restart the server to connect to the new network
+
+## Captive Portal Feature (Auto-Redirect Hotspot)
+
+When your Pi Zero is acting as a WiFi hotspot (e.g., during initial setup), you can configure it to automatically redirect connected devices to the WiFi setup page. This is known as a "Captive Portal" and will typically trigger a "Sign in to WiFi" notification on phones and laptops.
+
+### How it works:
+- Any HTTP traffic (port 80) from devices connected to the Pi's hotspot will be transparently redirected to the Flask server's port 5001.
+- The Flask server's `app.py` has a catch-all route that redirects any unexpected requests (like `google.com` or `connectivitycheck.gstatic.com`) to the `/setup-wifi` page if the server is offline.
+
+### How to Enable Captive Portal:
+The easiest way is to use the main setup script:
+1. Run `sudo ./setup.sh`
+2. Answer **"y"** when asked "Enable Captive Portal?".
+
+Alternatively, you can manually configure it:
+1. Enable IP forwarding: `echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward`
+2. Redirect port 80 to 5001: `sudo iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5001`
+3. Install `iptables-persistent` to save rules.
+
+### Required System Packages (for Captive Portal)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y iptables-persistent
+```
 
 ## Required System Packages
 
@@ -22,12 +48,6 @@ Before running the server with WiFi functionality, install these packages on you
 ```bash
 sudo apt-get update
 sudo apt-get install -y wireless-tools wpasupplicant
-```
-
-### Package Details
-
-- **wireless-tools**: Provides `iwlist` command for scanning WiFi networks
-- **wpasupplicant**: Provides `wpa_supplicant.conf` for WiFi configuration
 
 ## Usage
 
@@ -236,13 +256,13 @@ The following files were added/modified:
 ### New Files
 - `static/wifi-setup.html` - WiFi setup page
 - `static/wifi-setup.js` - WiFi setup functionality
-- `static/tailwind.min.css` - Local Tailwind CSS
+- `static/tailwind.js` - Local Tailwind CSS
 - `static/lucide.min.js` - Local Lucide icons
 
 ### Modified Files
 - `app.py` - Added WiFi helper functions and API endpoints
-- `static/index.html` - Updated to use local CDN assets
-- `.gitignore` - Already excludes music files
+- `static/index.html` - Updated to use local assets and new Tailwind config
+- `static/support.html` - Updated to use local assets
 
 ## Compatibility
 

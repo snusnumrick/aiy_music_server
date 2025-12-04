@@ -45,10 +45,13 @@ source music_server/bin/activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Create test files (requires ffmpeg)
+# 3. Configure WiFi (if needed)
+#    See the dedicated guide: WIFI_SETUP_GUIDE.md
+
+# 4. Create test files (requires ffmpeg)
 python create_test_music.py
 
-# 4. Start server
+# 5. Start server
 python app.py
 ```
 

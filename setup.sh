@@ -12,7 +12,7 @@ echo ""
 
 # Define variables
 SERVICE_NAME="cubie-server"
-SERVICE_DESCRIPTION="AIY Server (mDNS: cubie-server.local)"
+SERVICE_DESCRIPTION="AIY Server (mDNS: cubie.local)"
 
 # Get the directory where this script is located
 WORKING_DIR="$(dirname "$(readlink -f "$0")")"
@@ -152,6 +152,38 @@ EOF
     echo "Service ${SERVICE_NAME} has been created, enabled, and started."
     echo "Check status with: sudo systemctl status ${SERVICE_NAME}"
     echo "View logs with: sudo journalctl -u ${SERVICE_NAME} -f"
+fi
+
+# Captive Portal Setup
+echo ""
+read -p "Enable Captive Portal (Hotspot auto-redirect)? (y/n) " -r
+echo ""
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Setting up Captive Portal..."
+    
+    # 1. Enable IP Forwarding
+    echo "Enabling IP forwarding..."
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+    
+    # 2. Install iptables-persistent if needed
+    if ! dpkg -s iptables-persistent >/dev/null 2>&1; then
+        echo "Installing iptables-persistent..."
+        # Use DEBIAN_FRONTEND=noninteractive to avoid prompts, or let it prompt?
+        # Letting it prompt is safer so user sees what's happening
+        apt-get update && apt-get install -y iptables-persistent
+    fi
+    
+    # 3. Add IPTables Rule (Port 80 -> 5001)
+    echo "Adding iptables redirect rule..."
+    # Target wlan0 interface
+    iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5001
+    
+    # 4. Persist Rules
+    echo "Saving iptables rules..."
+    iptables-save > /etc/iptables/rules.v4
+    
+    echo -e "${GREEN}✓${NC} Captive Portal enabled"
 fi
 
 echo ""

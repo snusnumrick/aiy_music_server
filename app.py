@@ -57,7 +57,7 @@ FILE_CHANGE_LOCK = threading.Lock()
 
 # mDNS Configuration
 ZEROCONF_INSTANCE = None
-SERVICE_NAME = "cubie-server"
+SERVICE_NAME = "cubie"
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_PORT = 5001
 
@@ -400,6 +400,23 @@ def support_page():
 def wifi_setup_page():
     """Serve the WiFi setup page"""
     return send_from_directory('static', 'wifi-setup.html')
+
+@app.route('/<path:path>')
+def catch_all(path):
+    """Catch-all route for captive portal redirection"""
+    # If we are serving static files, let them through (though Flask usually handles this before)
+    if path.startswith('static/'):
+        return send_from_directory('static', path[7:])
+        
+    # Check connectivity
+    check_internet_connection()
+    
+    # If offline (hotspot mode), redirect everything to wifi setup
+    if not INTERNET_AVAILABLE:
+        from flask import redirect
+        return redirect('/setup-wifi')
+        
+    return "Not Found", 404
 
 @app.route('/api/wifi/networks')
 def wifi_networks():
@@ -1046,20 +1063,13 @@ def register_mdns_service():
     # Use the robust IP we just fetched
     ip_address = local_ip
 
-    # If hostname is "cubie", use "cubie.local"
-    # If hostname is anything else (e.g., "cubie-2"), use that as hostname.local
-    if hostname == SERVICE_NAME:
-        # Hostname matches service name, use it
-        server_hostname = f"{SERVICE_NAME.lower()}.local."
-        service_display_name = f"{SERVICE_NAME} ({hostname})"
-    else:
-        # Hostname is different (e.g., cubie-2), use it
-        server_hostname = f"{hostname}.local."
-        service_display_name = f"{SERVICE_NAME} (on {hostname})"
+    # The .local hostname will be based on the actual system's hostname
+    server_local_hostname = f"{hostname}.local."
+    service_display_name = f"{SERVICE_NAME} (on {hostname})" # Display actual system hostname
 
     try:
         # Create service info
-        service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}"
+        service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}" # e.g., "cubie._http._tcp.local."
         addresses = [socket.inet_aton(ip_address)]
 
         info = ServiceInfo(
@@ -1071,7 +1081,7 @@ def register_mdns_service():
                 'path': '/',
                 'description': 'Music Server'
             },
-            server=server_hostname
+            server=server_local_hostname # This will be based on the system's hostname (e.g., "cubie.local" or "raspberrypi.local")
         )
 
         # Register the service
@@ -1080,17 +1090,18 @@ def register_mdns_service():
 
         ZEROCONF_INSTANCE = zeroconf
 
-        print(f"✓ mDNS service registered: http://{server_hostname}:{SERVICE_PORT}")
-        print(f"  - Service: {service_display_name}")
+        print(f"✓ mDNS service '{SERVICE_NAME}' registered: http://{server_local_hostname}:{SERVICE_PORT}")
+        print(f"  - Service Display Name: {service_display_name}")
         print(f"  - Local IP: {ip_address}")
-        print(f"  - Hostname: {hostname}.local")
+        print(f"  - System Hostname: {hostname}")
         print(f"  - Interface: wlan0")
         print(f"  - Access URLs:")
-        print(f"    • http://{server_hostname}:{SERVICE_PORT}")
+        print(f"    • http://{server_local_hostname}:{SERVICE_PORT}")
         print(f"    • http://{ip_address}:{SERVICE_PORT}")
 
-        if hostname != SERVICE_NAME:
-            print(f"  - Note: Using {hostname}.local (was renamed from {SERVICE_NAME})")
+        if hostname.lower() != SERVICE_NAME.lower():
+            print(f"  - Note: If your system hostname ('{hostname}') differs from the preferred service name ('{SERVICE_NAME}'),")
+            print(f"          you may need to access it at http://{hostname}.local:{SERVICE_PORT} or change your system hostname to '{SERVICE_NAME}'.")
 
         # Verify the service is registered on the correct interface
         import subprocess

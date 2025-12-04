@@ -2,13 +2,13 @@
 
 A lightweight music server designed for Raspberry Pi Zero that automatically detects and serves MP3 files with embedded metadata through a mobile-friendly web interface.
 
-**Service Name: `cubie-server.local`** - Access your music from any device on the network!
+**Service Name: `cubie.local`** - Access your music from any device on the network!
 
 ## Features
 
 - 🎵 **Automatic Detection**: Watchdog file monitoring detects new MP3 files instantly
 - 📱 **Mobile-Friendly**: Responsive web interface optimized for phones
-- 🌐 **mDNS Discovery**: Automatic network discovery as "cubie-server.local" - no need to remember IPs!
+- 🌐 **mDNS Discovery**: Automatic network discovery as "cubie.local" - no need to remember IPs!
 - 🏷️ **Metadata Support**: Reads ID3 tags for title, artist, and lyrics (ID3v2.3/2.4)
 - ⏯️ **Built-in Player**: HTML5 audio player with next/previous controls
 - 🔍 **Search & Filter**: Find tracks quickly by title or artist
@@ -39,7 +39,12 @@ source music_server/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Create Test Music Files
+### 2. Configure WiFi (if needed)
+
+If your Raspberry Pi is not connected to WiFi, you can configure it via a web interface:
+- **[WiFi Setup Guide](WIFI_SETUP_GUIDE.md)**: Detailed instructions on how to set up WiFi, including captive portal.
+
+### 3. Create Test Music Files
 
 ```bash
 python create_test_music.py
@@ -47,7 +52,7 @@ python create_test_music.py
 
 This creates 8 sample MP3 files with various metadata scenarios including lyrics.
 
-### 3. Start the Server
+### 4. Start the Server
 
 ```bash
 python app.py
@@ -57,18 +62,18 @@ The server will start and register an mDNS service for automatic network discove
 
 **Expected Output:**
 ```
-✓ mDNS service registered: http://cubie-server.local:5001
+✓ mDNS service registered: http://cubie.local:5001
   - Service name: Cubie
   - Local IP: 192.168.x.x
   - Hostname: pi.local
   - URL: http://pi.local:5001
 ```
 
-### 4. Access from Your Phone
+### 5. Access from Your Phone
 
 **Easiest Way (mDNS - Recommended):**
 ```
-http://cubie-server.local:5001
+http://cubie.local:5001
 ```
 
 Or find your Pi's IP address:
@@ -78,7 +83,7 @@ hostname -I
 
 And open: `http://192.168.x.x:5001`
 
-**Note:** The default port is 5001. The mDNS service name is "cubie-server.local" and will be discoverable on your local network.
+**Note:** The default port is 5001. The mDNS service name is "cubie.local" and will be discoverable on your local network.
 
 ## Directory Structure
 
@@ -161,10 +166,10 @@ Simply copy MP3 files into the `music/` directory. The server will:
 
 4. **Access from your phone:**
    ```
-   http://cubie-server.local:5001
+   http://cubie.local:5001
    ```
 
-**That's it!** The service will be discoverable as "cubie-server.local" on your network.
+**That's it!** The service will be discoverable as "cubie.local" on your network.
 
 ### Verify mDNS on Pi
 
@@ -213,7 +218,7 @@ journalctl -u music-server -f
 
 **5. Access your music server:**
 ```
-http://cubie-server.local:5001
+http://cubie.local:5001
 ```
 
 **Custom Username:** To use a different username instead of "pi", run the setup script:
@@ -342,7 +347,7 @@ netstat -tlnp | grep :5001
 sudo ufw status
 ```
 
-### mDNS not working (cubie-server.local not found)
+### mDNS not working (cubie.local not found)
 
 **Verify mDNS is enabled:**
 ```bash

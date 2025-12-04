@@ -5,6 +5,41 @@ All notable changes to the AIY Music Server project will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-12-03
+
+### Added
+- **WiFi Setup Page Enhancements**
+  - Displays currently connected WiFi network and signal strength.
+  - Client-side and server-side password length validation (8-63 characters for WPA/WPA2).
+- **Captive Portal Feature**
+  - Automatically redirects devices connected to the Pi's hotspot to the WiFi setup page.
+  - Implemented via `iptables` rule (Port 80 to 5001 redirection) and Flask catch-all route.
+  - Integrated into `setup.sh` as an optional configuration step.
+
+### Changed
+- **mDNS Service Name Standardization**: Standardized service name to `cubie.local` across documentation and code.
+- **Robust WiFi Status (get_wifi_status)**:
+  - Improved detection by trying multiple paths for `iwconfig` and falling back to `iw` (modern tool).
+  - Added `sudo` fallback for `iwconfig` and `iw` commands.
+  - Enhanced SSID parsing to correctly strip quotes.
+  - Improved signal strength display (e.g., "Excellent", "Good", "Fair").
+- **Robust Local IP Detection (get_local_ip)**:
+  - Fallback to `hostname -I` and `ip addr` parsing if socket connection fails.
+  - Better handling for offline LAN scenarios.
+- **Improved Network Connectivity Logging**:
+  - `register_mdns_service` distinguishes between "Internet available" and "Local network connected (No Internet)".
+  - `restart_mdns_service` waits for any valid local IP instead of strict internet access.
+
+### Fixed
+- **Tailwind `ReferenceError`**: Resolved by renaming `tailwind.min.css` to `tailwind.js` and updating HTML references to load it as a script.
+- **SSID display bug**: Corrected parsing to prevent extra quotes in displayed network names.
+
+### Documentation
+- Updated `WIFI_SETUP_GUIDE.md` with captive portal details and required packages.
+- Updated `README.md` and `QUICKSTART.md` with WiFi setup guide reference, directory structure, and mDNS consistency.
+
+---
+
 ## [1.2.0] - 2025-11-25
 
 ### Added
