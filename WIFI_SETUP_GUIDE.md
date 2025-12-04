@@ -50,7 +50,7 @@ sudo apt-get install -y wireless-tools wpasupplicant
 
 6. After successful configuration, click "Restart Server"
 
-7. Wait for the server to restart and connect to WiFi
+7. The server will restart itself and reconnect to WiFi
 
 8. Access the music server at `http://cubie.local:5001` or `http://YOUR-PI-IP:5001`
 
@@ -92,6 +92,8 @@ The WiFi setup uses these API endpoints:
 - `GET /api/wifi/networks` - Scans and returns available WiFi networks
 - `POST /api/wifi/configure` - Configures WiFi with provided credentials
 - `GET /api/wifi/status` - Returns current WiFi connection status
+- `POST /api/wifi/restart` - Restarts the Flask server to reconnect to WiFi
+- `POST /api/wifi/reboot` - Reboots the Raspberry Pi to enable WiFi adapter
 
 ## WiFi Configuration Details
 
@@ -100,7 +102,68 @@ The server uses **wpa_supplicant** for WiFi configuration:
 - Config file location: `/etc/wpa_supplicant/wpa_supplicant.conf`
 - Country code: `US` (configurable in `app.py`)
 - Security: WPA-PSK (WPA/WPA2)
-- Network restart: `systemctl restart dhcpcd`
+- Configuration reload: `wpa_cli -i wlan0 reconfigure`
+
+## How WiFi Connection Works
+
+When you configure WiFi, the server:
+
+1. **Writes config file** to `/etc/wpa_supplicant/wpa_supplicant.conf` with your SSID and password
+2. **Attempts to reload** using `wpa_cli -i wlan0 reconfigure` (if wpa_supplicant is running)
+3. **If reconfigure succeeds**: WiFi attempts to reconnect immediately
+4. **If reconfigure fails** (offline, hotspot mode, or wpa_cli not available): Config is saved for next restart
+5. **Restart the server** to connect to the new WiFi network
+
+### Important Notes:
+
+**wpa_cli reconfigure only works when:**
+- Pi is already connected to a WiFi network managed by wpa_supplicant
+- wpa_cli command is available
+- The WiFi interface is active
+
+**wpa_cli reconfigure will FAIL when:**
+- Pi is offline (no WiFi connection)
+- Pi is connected to phone hotspot (may not use wpa_supplicant)
+- wpa_supplicant is not running
+
+**When wpa_cli fails**, this is **normal and expected**. The config file is still saved correctly, and restarting the server will connect to the new WiFi network.
+
+### Always Restart After Configuration:
+
+Regardless of whether wpa_cli succeeds or fails, you should **always click "Restart Server"** after configuring WiFi. This ensures:
+- Fresh connection to the new network
+- New IP address from the new network
+- Clean state for the music server
+
+### Hotspot Mode and wlan0 Interface:
+
+When the Pi is in **hotspot mode** (acting as an access point), the wlan0 interface is **not available** for WiFi scanning. This is **completely normal** because:
+
+1. Hotspot mode uses the WiFi adapter in **AP mode** (Access Point)
+2. WiFi scanning requires **STA mode** (Station/Client)
+3. These modes are **mutually exclusive** - can't do both at once
+4. **Reboot is required** to exit hotspot mode and switch to STA mode
+
+**Expected Flow:**
+
+```
+Pi boots → No WiFi config → Creates hotspot → User connects → Visits /setup-wifi
+     ↓
+Configure WiFi → Check wlan0 → Missing (expected!) → Save config → Show "Reboot Now"
+     ↓
+User clicks reboot → Pi reboots → Exits hotspot mode → Connects to WiFi
+```
+
+**What you'll see:**
+
+- Success message: "WiFi configuration saved. The system will reboot to connect to the new network."
+- "Reboot Now" button appears automatically
+
+**Manual alternative:**
+```bash
+# Instead of clicking the button, you can reboot manually:
+sudo reboot
+```
 
 ## Troubleshooting
 

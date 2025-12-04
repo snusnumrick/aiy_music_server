@@ -205,6 +205,12 @@ async function connectToWiFi() {
             throw new Error(data.error || 'Failed to configure WiFi');
         }
 
+        // Check if reboot is required (wlan0 not available - normal in hotspot mode)
+        if (data.reboot_required) {
+            showRebootError('Pi is in hotspot mode. Reboot required to connect to WiFi.');
+            return;
+        }
+
         showSuccess('WiFi configuration applied successfully!');
 
     } catch (error) {
@@ -212,6 +218,42 @@ async function connectToWiFi() {
         showError(`Failed to configure WiFi: ${error.message}`);
     } finally {
         setConnectButtonLoading(false);
+    }
+}
+
+// Show reboot error with button
+function showRebootError(message) {
+    errorEl.innerHTML = `
+        <div class="flex flex-col gap-4">
+            <div>${message}</div>
+            <button id="reboot-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition-all">
+                <span class="flex items-center justify-center gap-2">
+                    <i data-lucide="power" class="w-6 h-6"></i>
+                    Reboot Now
+                </span>
+            </button>
+        </div>
+    `;
+    errorEl.style.display = 'block';
+
+    // Add reboot button listener
+    const rebootBtn = document.getElementById('reboot-btn');
+    if (rebootBtn) {
+        rebootBtn.addEventListener('click', async () => {
+            rebootBtn.disabled = true;
+            rebootBtn.innerHTML = '<span class="flex items-center justify-center gap-2"><div class="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Rebooting...</span>';
+
+            try {
+                await fetch('/api/wifi/reboot', { method: 'POST' });
+                // Redirect after reboot
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 10000);
+            } catch (error) {
+                alert('Please reboot manually: sudo reboot');
+            }
+        });
+        lucide.createIcons();
     }
 }
 
@@ -228,16 +270,35 @@ function setConnectButtonLoading(loading) {
 }
 
 // Restart server
-function restartServer() {
+async function restartServer() {
     // Show confirmation
-    if (confirm('Restart the server now? You will need to refresh the page after the restart.')) {
-        restartBtn.disabled = true;
-        restartBtn.innerHTML = '<span class="flex items-center justify-center gap-2"><div class="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Restarting...</span>';
+    if (!confirm('Restart the server now to connect to the new WiFi network?')) {
+        return;
+    }
 
-        // Redirect to home page after 3 seconds
-        setTimeout(() => {
-            window.location.href = '/';
-        }, 3000);
+    restartBtn.disabled = true;
+    restartBtn.innerHTML = '<span class="flex items-center justify-center gap-2"><div class="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Restarting...</span>';
+
+    try {
+        // Call the restart API
+        const response = await fetch('/api/wifi/restart', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            // Server will restart, wait and then redirect
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        } else {
+            throw new Error('Failed to restart server');
+        }
+    } catch (error) {
+        console.error('Error restarting server:', error);
+        alert('Failed to restart server. Please restart manually: sudo systemctl restart music-server');
+        restartBtn.disabled = false;
+        restartBtn.innerHTML = '<span class="flex items-center justify-center gap-2"><i data-lucide="rotate-cw" class="w-6 h-6"></i>Restart Server</span>';
+        lucide.createIcons();
     }
 }
 

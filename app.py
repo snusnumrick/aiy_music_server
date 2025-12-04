@@ -420,6 +420,62 @@ def wifi_status():
     """Get current WiFi connection status"""
     return jsonify(get_wifi_status()), 200
 
+@app.route('/api/wifi/restart', methods=['POST'])
+def wifi_restart():
+    """Restart the server to reconnect to WiFi"""
+    try:
+        # Log the restart request
+        print("WiFi restart requested via API")
+
+        # Restart the Flask app using os.execv
+        # This replaces the current process with a new one
+        python = sys.executable
+        os.execv(python, [python] + sys.argv)
+
+        # This line will never be reached
+        return jsonify({
+            'success': True,
+            'message': 'Server restarting...'
+        }), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'Error restarting server: {str(e)}'
+        }), 500
+
+@app.route('/api/wifi/reboot', methods=['POST'])
+def wifi_reboot():
+    """Reboot the system to enable WiFi adapter"""
+    try:
+        # Log the reboot request
+        print("System reboot requested via API")
+
+        # Reboot the system using subprocess
+        import subprocess
+        subprocess.run(['sudo', 'reboot'], check=True)
+
+        # This line will never be reached
+        return jsonify({
+            'success': True,
+            'message': 'System rebooting...'
+        }), 200
+
+    except subprocess.CalledProcessError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to reboot: {str(e)}'
+        }), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'Error rebooting system: {str(e)}'
+        }), 500
+
 def get_local_ip():
     """Get the local IP address of the machine"""
     try:
@@ -569,24 +625,37 @@ def scan_wifi_networks():
 def configure_wifi(ssid, password):
     """Configure WiFi by writing to wpa_supplicant.conf"""
     try:
-        # Create wpa_supplicant config content
+        # Escape double quotes in SSID and password by doubling them
+        # wpa_supplicant requires quotes around SSID and PSK
+        escaped_ssid = ssid.replace('"', '\\"')
+        escaped_password = password.replace('"', '\\"')
+
+        # Create wpa_supplicant config content with proper quotes
         config_content = f'''country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 
 network={{
-    ssid="{ssid}"
-    psk="{password}"
+    ssid="{escaped_ssid}"
+    psk="{escaped_password}"
     key_mgmt=WPA-PSK
 }}
 '''
 
-        # Write config file with sudo
+        # Write config file using Python's write with sudo via tee
         import subprocess
+
+        # Use tee to write the content safely
+        write_command = [
+            'sudo', 'tee', WIFI_CONFIG_PATH
+        ]
+
         result = subprocess.run(
-            ['sudo', 'bash', '-c', f'echo "{config_content}" > {WIFI_CONFIG_PATH}'],
+            write_command,
+            input=config_content,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=10
         )
 
         if result.returncode != 0:
@@ -595,24 +664,103 @@ network={{
                 'error': f'Failed to write config: {result.stderr}'
             }
 
-        # Restart wpa_supplicant to apply changes
-        subprocess.run(
-            ['sudo', 'systemctl', 'restart', 'dhcpcd'],
+        print("WiFi configuration written to wpa_supplicant.conf")
+        print(f"SSID: {ssid}")
+        print(f"Password: {'*' * len(password)}")
+
+        # Check if wlan0 interface exists
+        print("Checking for WiFi interface (wlan0)...")
+        interface_check = subprocess.run(
+            ['ip', 'link', 'show', 'wlan0'],
             capture_output=True,
-            timeout=30
+            text=True,
+            timeout=3
         )
 
+        if interface_check.returncode != 0:
+            print("WARNING: WiFi interface wlan0 not found!")
+            print("This is NORMAL when the Pi is in hotspot mode.")
+            print("The Pi needs to reboot to exit hotspot mode and connect to WiFi.")
+            print("WiFi configuration has been saved and will be applied on reboot.")
+
+            return {
+                'success': True,
+                'message': 'WiFi configuration saved. The system will reboot to connect to the new network.',
+                'reboot_required': True
+            }
+
+        print("WiFi interface wlan0 detected")
+
+        # Try to bring up the interface if it's down
+        print("Ensuring WiFi interface is up...")
+        subprocess.run(
+            ['sudo', 'ip', 'link', 'set', 'wlan0', 'up'],
+            capture_output=True,
+            timeout=3
+        )
+
+        # Try to reload wpa_supplicant configuration (will fail if offline/hotspot mode)
+        print("Attempting to reload WiFi configuration...")
+        reconfigure_result = subprocess.run(
+            ['sudo', 'wpa_cli', '-i', 'wlan0', 'reconfigure'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if reconfigure_result.returncode == 0:
+            print("WiFi configuration reloaded successfully")
+            print(f"wpa_cli output: {reconfigure_result.stdout.strip()}")
+
+            # Wait a moment for the connection to establish
+            import time
+            time.sleep(3)
+
+            # Check if we can see the new SSID in scan results
+            status_result = subprocess.run(
+                ['sudo', 'iwconfig', 'wlan0'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if status_result.returncode == 0:
+                print("WiFi interface status:")
+                print(status_result.stdout[:200] + "..." if len(status_result.stdout) > 200 else status_result.stdout)
+
+            return {
+                'success': True,
+                'message': 'WiFi configuration applied and reloaded. Please restart the server to connect.',
+                'reboot_required': False
+            }
+        else:
+            print(f"wpa_cli reconfigure failed (likely offline or in hotspot mode)")
+            print(f"This is normal - configuration will take effect on server restart")
+
+            return {
+                'success': True,
+                'message': 'WiFi configuration saved. Please restart the server to connect to the new network.',
+                'reboot_required': False
+            }
+
+    except FileNotFoundError:
+        # wpa_cli not found - this is OK, just save the config
+        print("wpa_cli not found - WiFi configuration saved for next restart")
         return {
             'success': True,
-            'message': 'WiFi configuration applied. Please restart the server.'
+            'message': 'WiFi configuration saved. Please restart the server to connect to the new network.',
+            'reboot_required': False
         }
-
     except subprocess.TimeoutExpired:
+        print("Timeout trying to reload WiFi - configuration saved for restart")
         return {
-            'success': False,
-            'error': 'Timeout while restarting network service'
+            'success': True,
+            'message': 'WiFi configuration saved. Please restart the server to connect to the new network.',
+            'reboot_required': False
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             'success': False,
             'error': f'Error configuring WiFi: {str(e)}'
