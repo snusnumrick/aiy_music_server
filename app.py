@@ -928,18 +928,24 @@ def get_wifi_status():
             output = result.stdout
             if 'ESSID:' in output:
                 try:
-                    essid = output.split('ESSID:')[1].split('\n')[0].strip('"').strip()
+                    essid = output.split('ESSID:')[1].split('\n')[0].strip().strip('"')
                     
                     signal = "N/A"
                     if 'Signal level=' in output:
                         signal_part = output.split('Signal level=')[1].split()[0]
                         # Sometimes it is quality=xx/xx, sometimes level=-xx dBm
-                        if 'dBm' in output or int(signal_part) < 0:
+                        if 'dBm' in output or (signal_part.lstrip('-').isdigit() and int(signal_part) < 0): # Check if it's a negative number
                              signal = f"{signal_part} dBm"
                         else:
-                             # quality
-                             signal = f"Quality: {signal_part}"
-                    
+                             # quality is xx/xx
+                             try:
+                                 quality_val = int(signal_part.split('/')[0])
+                                 if quality_val >= 70: signal = "Excellent"
+                                 elif quality_val >= 40: signal = "Good"
+                                 else: signal = "Fair"
+                             except ValueError:
+                                 signal = f"Quality: {signal_part}"
+                                 
                     if essid and essid != 'off/any':
                         return {
                             'connected': True,
@@ -981,7 +987,7 @@ def get_wifi_status():
                     for line in output.split('\n'):
                         line = line.strip()
                         if line.startswith('SSID:'):
-                            ssid = line.split('SSID:')[1].strip()
+                            ssid = line.split('SSID:')[1].strip().strip('"')
                         elif line.startswith('signal:'):
                             signal = line.split('signal:')[1].strip()
                     
