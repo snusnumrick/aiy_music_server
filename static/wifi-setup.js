@@ -14,6 +14,9 @@ const connectBtn = document.getElementById('connect-btn');
 const successMessageEl = document.getElementById('success-message');
 const restartBtn = document.getElementById('restart-btn');
 const statusMessageEl = document.getElementById('status-message');
+const currentConnectionEl = document.getElementById('current-connection');
+const currentSsidEl = document.getElementById('current-ssid');
+const currentSignalEl = document.getElementById('current-signal');
 
 // State
 let networks = [];
@@ -21,9 +24,28 @@ let selectedNetwork = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    loadCurrentStatus();
     loadNetworks();
     setupEventListeners();
 });
+
+// Load current connection status
+async function loadCurrentStatus() {
+    try {
+        const response = await fetch('/api/wifi/status');
+        const data = await response.json();
+
+        if (data.connected) {
+            currentSsidEl.textContent = data.ssid;
+            currentSignalEl.textContent = `Signal: ${data.signal || 'N/A'}`;
+            currentConnectionEl.style.display = 'block';
+        } else {
+            currentConnectionEl.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading status:', error);
+    }
+}
 
 // Setup event listeners
 function setupEventListeners() {
