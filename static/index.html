@@ -22,11 +22,12 @@
         }
     </script>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/shared-styles.js"></script>
 </head>
 <body class="bg-gradient-to-br from-primary to-secondary min-h-screen">
     <div class="max-w-5xl mx-auto min-h-screen flex flex-col">
         <!-- Header -->
-        <header class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-lg p-6 md:p-8">
+        <header class="app-header">
             <div class="flex items-center justify-between">
                 <div>
                     <h1 class="text-3xl md:text-4xl font-bold text-primary mb-2">Cubie Music</h1>
@@ -65,7 +66,7 @@
         <div id="music-list" class="flex-1 p-4 md:p-6 overflow-y-auto"></div>
 
         <!-- Player -->
-        <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm p-3 sm:p-4 md:p-6 shadow-2xl">
+        <div class="player-container">
             <div class="player-info mb-3 sm:mb-4 md:mb-6">
                 <div class="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-300 mb-1 sm:mb-2">Now Playing:</div>
                 <div id="current-title" class="text-lg sm:text-xl md:text-xl font-bold text-gray-800 dark:text-gray-100 mb-1 truncate">No track selected</div>
@@ -88,13 +89,13 @@
         </div>
         <div id="fullscreen-lyrics-content" class="flex-1 overflow-y-auto p-6 sm:p-8 md:p-10 lg:p-12 text-white text-lg sm:text-xl md:text-2xl lg:text-3xl leading-relaxed whitespace-pre-wrap break-words"></div>
         <div class="bg-black/50 p-4 sm:p-6 flex justify-center gap-4 sm:gap-6 border-t border-white/10">
-            <button class="btn bg-primary hover:bg-primary/90 text-white font-bold py-2 px-4 sm:py-3 sm:px-5 md:py-3 md:px-6 rounded-xl transition-all" id="exit-fullscreen-btn" title="Back">
+            <button class="btn" id="exit-fullscreen-btn" title="Back">
                 <i data-lucide="arrow-left" class="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8"></i>
             </button>
-            <button class="btn bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 sm:py-3 sm:px-5 md:py-3 md:px-6 rounded-xl transition-all" id="fullscreen-font-smaller" title="Smaller Font">
+            <button class="btn-secondary" id="fullscreen-font-smaller" title="Smaller Font">
                 <span class="text-2xl sm:text-3xl font-bold">A-</span>
             </button>
-            <button class="btn bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 sm:py-3 sm:px-5 md:py-3 md:px-6 rounded-xl transition-all" id="fullscreen-font-larger" title="Larger Font">
+            <button class="btn-secondary" id="fullscreen-font-larger" title="Larger Font">
                 <span class="text-2xl sm:text-3xl font-bold">A+</span>
             </button>
         </div>
@@ -102,14 +103,14 @@
 
     <!-- Delete Confirmation Modal -->
     <div id="delete-modal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-6">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+        <div class="modal-container">
             <h3 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-4">Delete Song</h3>
             <p class="text-lg text-gray-600 dark:text-gray-300 mb-6" id="delete-modal-text"></p>
             <div class="flex gap-4 justify-end">
-                <button id="cancel-delete" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-xl text-lg transition-all">
+                <button id="cancel-delete" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 sm:py-3 sm:px-6 rounded-xl text-lg transition-all">
                     Cancel
                 </button>
-                <button id="confirm-delete" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-xl text-lg transition-all">
+                <button id="confirm-delete" class="btn-danger">
                     Delete
                 </button>
             </div>
