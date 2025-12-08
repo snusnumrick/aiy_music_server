@@ -215,19 +215,34 @@ function showFullscreenImage(index) {
     elements.imageTitle.textContent = pic.title;
     elements.imageCaption.textContent = pic.caption || '';
     
-    // Meta info - parse EXIF date format (YYYY:MM:DD HH:MM:SS)
+    // Meta info - parse various date formats
     let dateStr = 'Unknown date';
     if (pic.date_taken) {
         try {
-            // EXIF format: "2024:01:15 14:30:00" -> "2024-01-15T14:30:00"
-            const normalized = pic.date_taken.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
-            const d = new Date(normalized);
-            if (!isNaN(d.getTime())) {
+            const dt = pic.date_taken;
+            let d;
+            
+            // IPTC format: "20241215" (YYYYMMDD)
+            if (/^\d{8}$/.test(dt)) {
+                d = new Date(dt.slice(0,4) + '-' + dt.slice(4,6) + '-' + dt.slice(6,8));
+            }
+            // EXIF format: "2024:01:15 14:30:00"
+            else if (dt.includes(':')) {
+                const normalized = dt.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
+                d = new Date(normalized);
+            }
+            // ISO format or other
+            else {
+                d = new Date(dt);
+            }
+            
+            if (d && !isNaN(d.getTime())) {
                 dateStr = d.toLocaleDateString();
             }
         } catch (e) {}
     }
     elements.imageMeta.textContent = `${pic.width}x${pic.height} • ${dateStr}`;
+
 
     
     elements.fullscreenImage.classList.remove('hidden');
