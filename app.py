@@ -223,6 +223,35 @@ def get_exif_data(image_path):
                             caption = decoded
                 except:
                     pass
+        
+        # Get date - try EXIF first
+        date_taken = str(exif.get('DateTimeOriginal', ''))
+        
+        # Try IPTC date if no EXIF date
+        if not date_taken:
+            try:
+                from PIL import IptcImagePlugin
+                iptc = IptcImagePlugin.getiptcinfo(img)
+                if iptc:
+                    # IPTC Date Created (2, 55) + Time Created (2, 60)
+                    if (2, 55) in iptc:
+                        val = iptc[(2, 55)]
+                        if isinstance(val, bytes):
+                            date_taken = val.decode('utf-8', errors='ignore').strip()
+                        else:
+                            date_taken = str(val).strip()
+            except:
+                pass
+        
+        # Fall back to file modification date if still no date
+        if not date_taken:
+            try:
+                import os
+                mtime = os.path.getmtime(image_path)
+                from datetime import datetime
+                date_taken = datetime.fromtimestamp(mtime).strftime('%Y:%m:%d %H:%M:%S')
+            except:
+                pass
                 
         return {
             'width': width,
@@ -231,8 +260,9 @@ def get_exif_data(image_path):
             'caption': caption,
             'make': str(exif.get('Make', '')),
             'model': str(exif.get('Model', '')),
-            'date_taken': str(exif.get('DateTimeOriginal', ''))
+            'date_taken': date_taken
         }
+
     except Exception as e:
         print(f"Error reading metadata from {image_path}: {e}")
         try:
