@@ -21,8 +21,27 @@ const elements = {
     deleteModal: document.getElementById('delete-modal'),
     deleteModalText: document.getElementById('delete-modal-text'),
     cancelDelete: document.getElementById('cancel-delete'),
-    confirmDelete: document.getElementById('confirm-delete')
+    confirmDelete: document.getElementById('confirm-delete'),
+    
+    // Views and Tabs
+    musicView: document.getElementById('music-view'),
+    picturesView: document.getElementById('pictures-view'),
+    documentsView: document.getElementById('documents-view'),
+    picturesGrid: document.getElementById('pictures-grid'),
+    documentsList: document.getElementById('documents-list'),
+    tabs: document.querySelectorAll('.tab-btn'),
+    
+    // Image Viewer
+    fullscreenImage: document.getElementById('fullscreen-image'),
+    fullscreenImgDisplay: document.getElementById('fullscreen-img-display'),
+    imageTitle: document.getElementById('image-title'),
+    imageCaption: document.getElementById('image-caption'),
+    imageMeta: document.getElementById('image-meta'),
+    imageCloseBtn: document.getElementById('image-close-btn'),
+    prevImageBtn: document.getElementById('prev-image-btn'),
+    nextImageBtn: document.getElementById('next-image-btn')
 };
+
 
 async function fetchAllData() {
     await Promise.all([fetchMusic(), fetchPictures(), fetchDocuments()]);
