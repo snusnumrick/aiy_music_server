@@ -139,49 +139,70 @@ class MusicEventHandler(FileSystemEventHandler):
             print("Metadata reload complete.")
 
 def get_exif_data(image_path):
-    """Extract EXIF data from image"""
+    """Extract EXIF data from image (compatible with Pillow 6.x+)"""
     try:
         img = Image.open(image_path)
-        exif = { ExifTags.TAGS[k]: v for k, v in img._getexif().items() if k in ExifTags.TAGS } if img._getexif() else {}
-        
-        # Get basic info
         width, height = img.size
         
+        # Try to get EXIF data safely
+        exif = {}
+        try:
+            raw_exif = img._getexif()
+            if raw_exif:
+                exif = { ExifTags.TAGS.get(k, k): v for k, v in raw_exif.items() }
+        except (AttributeError, TypeError):
+            # No EXIF data or method not available
+            pass
+        
         # Try to get title/caption
-        # XPTitle=0x9c9b, XPComment=0x9c9c, ImageDescription=0x010e
         title = ""
         caption = ""
         
         if 'ImageDescription' in exif:
             caption = str(exif['ImageDescription'])
             
-        # XP tags are encoded in UCS-2 LE
-        if 0x9c9b in exif: # XPTitle
-            try:
-                title = exif[0x9c9b].decode('utf-16le').rstrip('\x00')
-            except:
-                pass
-                
-        if 0x9c9c in exif: # XPComment 
-            try:
-                caption = exif[0x9c9c].decode('utf-16le').rstrip('\x00')
-            except:
-                pass
+        # XP tags are encoded in UCS-2 LE (use tag numbers since they may not be in TAGS dict)
+        for key in list(exif.keys()):
+            if key == 0x9c9b or key == 'XPTitle':  # XPTitle
+                try:
+                    val = exif[key]
+                    if isinstance(val, bytes):
+                        title = val.decode('utf-16le').rstrip('\\x00')
+                    elif isinstance(val, str):
+                        title = val
+                except:
+                    pass
+            if key == 0x9c9c or key == 'XPComment':  # XPComment
+                try:
+                    val = exif[key]
+                    if isinstance(val, bytes):
+                        caption = val.decode('utf-16le').rstrip('\\x00')
+                    elif isinstance(val, str):
+                        caption = val
+                except:
+                    pass
                 
         return {
             'width': width,
             'height': height,
             'title': title,
             'caption': caption,
-            'make': exif.get('Make', ''),
-            'model': exif.get('Model', ''),
-            'date_taken': exif.get('DateTimeOriginal', '')
+            'make': str(exif.get('Make', '')),
+            'model': str(exif.get('Model', '')),
+            'date_taken': str(exif.get('DateTimeOriginal', ''))
         }
     except Exception as e:
-        print(f"Error reading EXIF for {image_path}: {e}")
-        return {'width': 0, 'height': 0, 'title': '', 'caption': ''}
+        print(f"Error reading EXIF from {image_path}: {e}")
+        # Return basic info even if EXIF fails
+        try:
+            img = Image.open(image_path)
+            w, h = img.size
+            return {'width': w, 'height': h, 'title': '', 'caption': '', 'make': '', 'model': '', 'date_taken': ''}
+        except:
+            return {'width': 0, 'height': 0, 'title': '', 'caption': '', 'make': '', 'model': '', 'date_taken': ''}
 
 def generate_thumbnail(image_path, thumb_path):
+
     """Generate thumbnail for image"""
     try:
         if os.path.exists(thumb_path):
