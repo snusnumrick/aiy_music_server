@@ -251,6 +251,14 @@ body {
     display: block;
 }
 
+#fullscreen-image {
+    background-color: black;
+}
+
+#fullscreen-image.hidden {
+    display: none;
+}
+
 .fullscreen-lyrics.hidden {
     display: none;
 }

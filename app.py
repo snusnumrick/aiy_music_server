@@ -9,7 +9,11 @@ import sys
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 import threading
+from PIL import Image, ExifTags
+import shutil
 
 # Force unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
@@ -52,7 +56,13 @@ def handle_exception(e):
 
 # Configuration
 MUSIC_FOLDER = os.path.join(os.path.dirname(__file__), 'music')
-METADATA_CACHE = []
+PICTURES_FOLDER = os.path.join(os.path.dirname(__file__), 'pictures')
+DOCUMENTS_FOLDER = os.path.join(os.path.dirname(__file__), 'documents')
+THUMBNAILS_FOLDER = os.path.join(os.path.dirname(__file__), '.thumbnails')
+
+METADATA_CACHE = [] # Music cache
+PICTURES_CACHE = []
+DOCUMENTS_CACHE = []
 FILE_CHANGE_LOCK = threading.Lock()
 
 # mDNS Configuration
@@ -77,31 +87,40 @@ class MusicEventHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
-        if not event.src_path.endswith('.mp3'):
-            return
+        # Check extension
+        is_music = event.src_path.lower().endswith('.mp3')
+        is_picture = event.src_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))
+        is_doc = not event.is_directory and not is_music and not is_picture and not os.path.basename(event.src_path).startswith('.')
 
-        print(f"File created: {event.src_path}")
-        self._trigger_reload()
+        if is_music or is_picture or is_doc:
+            print(f"File created: {event.src_path}")
+            self._trigger_reload()
 
     def on_deleted(self, event):
         if event.is_directory:
             return
 
-        if not event.src_path.endswith('.mp3'):
-            return
+        # Check extension
+        is_music = event.src_path.lower().endswith('.mp3')
+        is_picture = event.src_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))
+        is_doc = not event.is_directory and not is_music and not is_picture and not os.path.basename(event.src_path).startswith('.')
 
-        print(f"File deleted: {event.src_path}")
-        self._trigger_reload()
+        if is_music or is_picture or is_doc:
+            print(f"File deleted: {event.src_path}")
+            self._trigger_reload()
 
     def on_modified(self, event):
         if event.is_directory:
             return
 
-        if not event.src_path.endswith('.mp3'):
-            return
+        # Check extension to decide if reload is needed
+        is_music = event.src_path.lower().endswith('.mp3')
+        is_picture = event.src_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))
+        is_doc = not event.is_directory and not is_music and not is_picture and not os.path.basename(event.src_path).startswith('.')
 
-        print(f"File modified: {event.src_path}")
-        self._trigger_reload()
+        if is_music or is_picture or is_doc:
+            print(f"File modified: {event.src_path}")
+            self._trigger_reload()
 
     def _trigger_reload(self):
         current_time = time.time()
@@ -115,7 +134,157 @@ class MusicEventHandler(FileSystemEventHandler):
         with FILE_CHANGE_LOCK:
             print("Lock acquired. Reloading metadata...")
             load_metadata()
+            load_picture_metadata()
+            load_document_metadata()
             print("Metadata reload complete.")
+
+def get_exif_data(image_path):
+    """Extract EXIF data from image"""
+    try:
+        img = Image.open(image_path)
+        exif = { ExifTags.TAGS[k]: v for k, v in img._getexif().items() if k in ExifTags.TAGS } if img._getexif() else {}
+        
+        # Get basic info
+        width, height = img.size
+        
+        # Try to get title/caption
+        # XPTitle=0x9c9b, XPComment=0x9c9c, ImageDescription=0x010e
+        title = ""
+        caption = ""
+        
+        if 'ImageDescription' in exif:
+            caption = str(exif['ImageDescription'])
+            
+        # XP tags are encoded in UCS-2 LE
+        if 0x9c9b in exif: # XPTitle
+            try:
+                title = exif[0x9c9b].decode('utf-16le').rstrip('\x00')
+            except:
+                pass
+                
+        if 0x9c9c in exif: # XPComment 
+            try:
+                caption = exif[0x9c9c].decode('utf-16le').rstrip('\x00')
+            except:
+                pass
+                
+        return {
+            'width': width,
+            'height': height,
+            'title': title,
+            'caption': caption,
+            'make': exif.get('Make', ''),
+            'model': exif.get('Model', ''),
+            'date_taken': exif.get('DateTimeOriginal', '')
+        }
+    except Exception as e:
+        print(f"Error reading EXIF for {image_path}: {e}")
+        return {'width': 0, 'height': 0, 'title': '', 'caption': ''}
+
+def generate_thumbnail(image_path, thumb_path):
+    """Generate thumbnail for image"""
+    try:
+        if os.path.exists(thumb_path):
+            return True
+            
+        img = Image.open(image_path)
+        img.thumbnail((300, 300))
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        
+        # Save as JPEG
+        img.save(thumb_path, "JPEG", quality=70)
+        return True
+    except Exception as e:
+        print(f"Error generating thumbnail for {image_path}: {e}")
+        return False
+
+def load_picture_metadata():
+    """Load metadata from pictures folder"""
+    global PICTURES_CACHE
+    print("Loading picture metadata...")
+    pictures = []
+    
+    if not os.path.exists(PICTURES_FOLDER):
+        os.makedirs(PICTURES_FOLDER)
+        PICTURES_cache = []
+        return
+
+    if not os.path.exists(THUMBNAILS_FOLDER):
+        os.makedirs(THUMBNAILS_FOLDER)
+
+    valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
+    files = [f for f in os.listdir(PICTURES_FOLDER) if f.lower().endswith(valid_extensions)]
+    
+    for filename in files:
+        filepath = os.path.join(PICTURES_FOLDER, filename)
+        thumb_filename = f"{os.path.splitext(filename)[0]}.jpg"
+        thumb_path = os.path.join(THUMBNAILS_FOLDER, thumb_filename)
+        
+        try:
+            # Generate thumbnail if needed
+            generate_thumbnail(filepath, thumb_path)
+            
+            # Get metadata
+            exif_data = get_exif_data(filepath)
+            file_stat = os.stat(filepath)
+            
+            picture = {
+                'filename': filename,
+                'thumbnail_url': f'/api/pictures/{filename}/thumbnail',
+                'url': f'/api/pictures/{filename}',
+                'title': exif_data['title'] or filename,
+                'caption': exif_data['caption'],
+                'width': exif_data['width'],
+                'height': exif_data['height'],
+                'date_taken': exif_data.get('date_taken', ''),
+                'created': datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+                'modified': datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+            }
+            pictures.append(picture)
+        except Exception as e:
+            print(f"Error processing picture {filename}: {e}")
+            
+    pictures.sort(key=lambda x: x['filename'])
+    PICTURES_CACHE = pictures
+    print(f"Loaded {len(pictures)} pictures.")
+
+def load_document_metadata():
+    """Load metadata from documents folder"""
+    global DOCUMENTS_CACHE
+    print("Loading document metadata...")
+    documents = []
+    
+    if not os.path.exists(DOCUMENTS_FOLDER):
+        os.makedirs(DOCUMENTS_FOLDER)
+        DOCUMENTS_CACHE = []
+        return
+        
+    for filename in os.listdir(DOCUMENTS_FOLDER):
+        if filename.startswith('.'): continue
+        
+        filepath = os.path.join(DOCUMENTS_FOLDER, filename)
+        if os.path.isdir(filepath): continue
+        
+        try:
+            file_stat = os.stat(filepath)
+            
+            doc = {
+                'filename': filename,
+                'url': f'/api/documents/{filename}',
+                'size': file_stat.st_size,
+                'created': datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+                'modified': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                'type': os.path.splitext(filename)[1].lower().replace('.', '')
+            }
+            documents.append(doc)
+        except Exception as e:
+            print(f"Error processing document {filename}: {e}")
+            
+    documents.sort(key=lambda x: x['filename'])
+    DOCUMENTS_CACHE = documents
+    print(f"Loaded {len(documents)} documents.")
 
 def load_metadata():
     """Load metadata from all MP3 files in the music folder"""
@@ -329,13 +498,71 @@ def stream_music(filename):
     """Stream MP3 file for playback"""
     return send_from_directory(MUSIC_FOLDER, filename, mimetype='audio/mpeg')
 
+@app.route('/api/pictures')
+def get_pictures():
+    """Return JSON array of picture files"""
+    with FILE_CHANGE_LOCK:
+        if not PICTURES_CACHE:
+            load_picture_metadata()
+        return jsonify(PICTURES_CACHE)
+
+@app.route('/api/pictures/<filename>')
+def get_picture(filename):
+    """Serve picture file"""
+    return send_from_directory(PICTURES_FOLDER, filename)
+
+@app.route('/api/pictures/<filename>/thumbnail')
+def get_thumbnail(filename):
+    """Serve thumbnail file"""
+    thumb_filename = f"{os.path.splitext(filename)[0]}.jpg"
+    
+    # Check if thumbnail exists
+    if not os.path.exists(os.path.join(THUMBNAILS_FOLDER, thumb_filename)):
+        # Try to generate it on demand
+        if os.path.exists(os.path.join(PICTURES_FOLDER, filename)):
+            generate_thumbnail(
+                os.path.join(PICTURES_FOLDER, filename),
+                os.path.join(THUMBNAILS_FOLDER, thumb_filename)
+            )
+            
+    return send_from_directory(THUMBNAILS_FOLDER, thumb_filename)
+
+@app.route('/api/documents')
+def get_documents():
+    """Return JSON array of document files"""
+    with FILE_CHANGE_LOCK:
+        if not DOCUMENTS_CACHE:
+            load_document_metadata()
+        return jsonify(DOCUMENTS_CACHE)
+
+@app.route('/api/documents/<filename>')
+def get_document(filename):
+    """Serve/download document file"""
+    return send_from_directory(DOCUMENTS_FOLDER, filename, as_attachment=True)
+
+@app.route('/api/config/folders')
+def get_folders_config():
+    """Return folder paths for discovery"""
+    return jsonify({
+        'music': MUSIC_FOLDER,
+        'pictures': PICTURES_FOLDER,
+        'documents': DOCUMENTS_FOLDER
+    })
+
 @app.route('/api/refresh', methods=['POST'])
 def refresh_metadata():
     """Manually trigger metadata reload"""
     print("Received request: POST /api/refresh")
     with FILE_CHANGE_LOCK:
         load_metadata()
-    return jsonify({'status': 'success', 'count': len(METADATA_CACHE)})
+        load_picture_metadata()
+        load_document_metadata()
+    return jsonify({
+        'status': 'success', 
+        'music_count': len(METADATA_CACHE),
+        'pictures_count': len(PICTURES_CACHE),
+        'documents_count': len(DOCUMENTS_CACHE)
+    })
 
 @app.route('/api/health')
 def health_check():
@@ -1151,9 +1378,18 @@ def start_file_monitor():
     """Start the file system monitor"""
     event_handler = MusicEventHandler()
     observer = Observer()
+    
+    # Ensure folders exist
+    for folder in [MUSIC_FOLDER, PICTURES_FOLDER, DOCUMENTS_FOLDER]:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+            
     observer.schedule(event_handler, MUSIC_FOLDER, recursive=False)
+    observer.schedule(event_handler, PICTURES_FOLDER, recursive=False)
+    observer.schedule(event_handler, DOCUMENTS_FOLDER, recursive=False)
+    
     observer.start()
-    print(f"Started file monitor on {MUSIC_FOLDER}")
+    print(f"Started file monitor on music, pictures, and documents")
     return observer
 
 if __name__ == '__main__':

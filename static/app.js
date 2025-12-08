@@ -1,6 +1,9 @@
-let musicData = [];
 let currentTrackIndex = -1;
 let filteredTracks = [];
+let currentTab = 'music';
+let picturesData = [];
+let documentsData = [];
+let currentImageIndex = -1;
 let currentFontSize = 'medium';
 let deleteTrackIndex = null;
 
@@ -21,24 +24,52 @@ const elements = {
     confirmDelete: document.getElementById('confirm-delete')
 };
 
+async function fetchAllData() {
+    await Promise.all([fetchMusic(), fetchPictures(), fetchDocuments()]);
+    elements.status.textContent = 'Ready';
+    updateFileCount();
+}
+    
 async function fetchMusic() {
     try {
         const response = await fetch('/api/music');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        if (response.ok) {
+            musicData = await response.json();
+            filteredTracks = musicData;
+            if (currentTab === 'music') updateUI();
         }
-        musicData = await response.json();
-        filteredTracks = musicData;
-        updateUI();
-        elements.status.textContent = 'Ready';
-        elements.fileCount.textContent = `${musicData.length} file${musicData.length !== 1 ? 's' : ''}`;
-        elements.errorMessage.style.display = 'none';
     } catch (error) {
         console.error('Error fetching music:', error);
-        elements.status.textContent = 'Error';
-        elements.errorMessage.textContent = `Failed to load music: ${error.message}`;
-        elements.errorMessage.style.display = 'block';
     }
+}
+
+async function fetchPictures() {
+    try {
+        const response = await fetch('/api/pictures');
+        if (response.ok) {
+            picturesData = await response.json();
+            if (currentTab === 'pictures') updateUI();
+        }
+    } catch (error) {
+        console.error('Error fetching pictures:', error);
+    }
+}
+
+async function fetchDocuments() {
+    try {
+        const response = await fetch('/api/documents');
+        if (response.ok) {
+            documentsData = await response.json();
+            if (currentTab === 'documents') updateUI();
+        }
+    } catch (error) {
+        console.error('Error fetching documents:', error);
+    }
+}
+
+function updateFileCount() {
+    const total = musicData.length + picturesData.length + documentsData.length;
+    elements.fileCount.textContent = `${total} files`;
 }
 
 function updateUI() {
@@ -46,19 +77,13 @@ function updateUI() {
         elements.loading.style.display = 'none';
     }
 
-    const searchTerm = ""; //elements.searchInput.value.toLowerCase().trim();
-
-    if (searchTerm) {
-        filteredTracks = musicData.filter(track =>
-            track.title.toLowerCase().includes(searchTerm) ||
-            track.artist.toLowerCase().includes(searchTerm) ||
-            track.filename.toLowerCase().includes(searchTerm)
-        );
-    } else {
-        filteredTracks = musicData;
+    if (currentTab === 'music') {
+        renderTrackList();
+    } else if (currentTab === 'pictures') {
+        renderPicturesGrid();
+    } else if (currentTab === 'documents') {
+        renderDocumentsList();
     }
-
-    renderTrackList();
 }
 
 function renderTrackList() {
@@ -104,6 +129,99 @@ function renderTrackList() {
     // Initialize Lucide icons for the new elements
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
+    }
+}
+
+function renderPicturesGrid() {
+    if (picturesData.length === 0) {
+        elements.picturesGrid.innerHTML = `
+            <div class="col-span-full py-10 text-center text-gray-500 text-lg">
+                No pictures found
+            </div>
+        `;
+        return;
+    }
+
+    elements.picturesGrid.innerHTML = picturesData.map((pic, index) => `
+        <div class="bg-white/90 dark:bg-gray-800/90 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer aspect-square relative group" onclick="showFullscreenImage(${index})">
+            <img src="${pic.thumbnail_url}" alt="${escapeHtml(pic.title)}" loading="lazy" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110">
+            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end h-1/2">
+                <div class="text-white text-sm font-semibold truncate">${escapeHtml(pic.title)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderDocumentsList() {
+    if (documentsData.length === 0) {
+        elements.documentsList.innerHTML = `
+            <div class="py-10 text-center text-gray-500 text-lg">
+                No documents found
+            </div>
+        `;
+        return;
+    }
+
+    elements.documentsList.innerHTML = documentsData.map((doc) => `
+        <a href="${doc.url}" target="_blank" class="block bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
+            <div class="flex items-center gap-3">
+                <div class="bg-primary/10 p-3 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                    <i data-lucide="file-text" class="w-6 h-6"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-gray-800 dark:text-gray-200 truncate">${escapeHtml(doc.filename)}</div>
+                    <div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <span>${formatFileSize(doc.size)}</span>
+                        <span>${formatDate(doc.modified)}</span>
+                    </div>
+                </div>
+                <div class="text-gray-400">
+                    <i data-lucide="download" class="w-5 h-5"></i>
+                </div>
+            </div>
+        </a>
+    `).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Image Viewer Logic
+function showFullscreenImage(index) {
+    if (index < 0 || index >= picturesData.length) return;
+    
+    currentImageIndex = index;
+    const pic = picturesData[index];
+    
+    elements.fullscreenImgDisplay.src = pic.url;
+    elements.imageTitle.textContent = pic.title;
+    elements.imageCaption.textContent = pic.caption || '';
+    
+    // Meta info
+    const date = pic.date_taken ? new Date(pic.date_taken.replace(/:/g, '-').replace(' ', 'T')).toLocaleDateString() : 'Unknown date';
+    elements.imageMeta.textContent = `${pic.width}x${pic.height} • ${date}`;
+    
+    elements.fullscreenImage.classList.remove('hidden');
+    elements.fullscreenImage.style.display = 'flex';
+    
+    // Button states
+    elements.prevImageBtn.style.opacity = index === 0 ? '0.3' : '1';
+    elements.nextImageBtn.style.opacity = index === picturesData.length - 1 ? '0.3' : '1';
+}
+
+function closeFullscreenImage() {
+    elements.fullscreenImage.classList.add('hidden');
+    elements.fullscreenImage.style.display = 'none';
+}
+
+function nextImage() {
+    if (currentImageIndex < picturesData.length - 1) {
+        showFullscreenImage(currentImageIndex + 1);
+    }
+}
+
+function prevImage() {
+    if (currentImageIndex > 0) {
+        showFullscreenImage(currentImageIndex - 1);
     }
 }
 
@@ -248,12 +366,20 @@ function showError(message) {
     }, 5000);
 }
 
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 async function refreshMetadata() {
     try {
         elements.status.textContent = 'Refreshing...';
         const response = await fetch('/api/refresh', { method: 'POST' });
         if (response.ok) {
-            await fetchMusic();
+            await fetchAllData();
             elements.status.textContent = 'Updated';
         } else {
             throw new Error('Refresh failed');
@@ -337,11 +463,54 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// Tab Switching
+elements.tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        const targetTab = tab.dataset.tab;
+        if (currentTab === targetTab) return;
+        
+        // Update state
+        currentTab = targetTab;
+        
+        // Update tab buttons
+        elements.tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update views
+        elements.musicView.classList.add('hidden');
+        elements.picturesView.classList.add('hidden');
+        elements.documentsView.classList.add('hidden');
+        
+        if (currentTab === 'music') elements.musicView.classList.remove('hidden');
+        if (currentTab === 'pictures') elements.picturesView.classList.remove('hidden');
+        if (currentTab === 'documents') elements.documentsView.classList.remove('hidden');
+        
+        updateUI();
+    });
+});
+
+// Image Viewer Events
+elements.imageCloseBtn?.addEventListener('click', closeFullscreenImage);
+elements.prevImageBtn?.addEventListener('click', (e) => { e.stopPropagation(); prevImage(); });
+elements.nextImageBtn?.addEventListener('click', (e) => { e.stopPropagation(); nextImage(); });
+
+// Keyboard nav
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeFullscreenImage();
+        // ... existing escape logic ...
+    }
+    if (!elements.fullscreenImage.classList.contains('hidden')) {
+        if (e.key === 'ArrowLeft') prevImage();
+        if (e.key === 'ArrowRight') nextImage();
+    }
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize Lucide icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
 
-    fetchMusic();
+    fetchAllData();
 });
