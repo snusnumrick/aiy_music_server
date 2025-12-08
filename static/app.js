@@ -215,9 +215,20 @@ function showFullscreenImage(index) {
     elements.imageTitle.textContent = pic.title;
     elements.imageCaption.textContent = pic.caption || '';
     
-    // Meta info
-    const date = pic.date_taken ? new Date(pic.date_taken.replace(/:/g, '-').replace(' ', 'T')).toLocaleDateString() : 'Unknown date';
-    elements.imageMeta.textContent = `${pic.width}x${pic.height} • ${date}`;
+    // Meta info - parse EXIF date format (YYYY:MM:DD HH:MM:SS)
+    let dateStr = 'Unknown date';
+    if (pic.date_taken) {
+        try {
+            // EXIF format: "2024:01:15 14:30:00" -> "2024-01-15T14:30:00"
+            const normalized = pic.date_taken.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
+            const d = new Date(normalized);
+            if (!isNaN(d.getTime())) {
+                dateStr = d.toLocaleDateString();
+            }
+        } catch (e) {}
+    }
+    elements.imageMeta.textContent = `${pic.width}x${pic.height} • ${dateStr}`;
+
     
     elements.fullscreenImage.classList.remove('hidden');
     elements.fullscreenImage.style.display = 'flex';
