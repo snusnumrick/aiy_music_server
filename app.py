@@ -139,7 +139,7 @@ class MusicEventHandler(FileSystemEventHandler):
             print("Metadata reload complete.")
 
 def get_exif_data(image_path):
-    """Extract EXIF data from image (compatible with Pillow 6.x+)"""
+    """Extract EXIF and IPTC data from image (compatible with Pillow 6.x+)"""
     try:
         img = Image.open(image_path)
         width, height = img.size
@@ -151,34 +151,76 @@ def get_exif_data(image_path):
             if raw_exif:
                 exif = { ExifTags.TAGS.get(k, k): v for k, v in raw_exif.items() }
         except (AttributeError, TypeError):
-            # No EXIF data or method not available
             pass
         
-        # Try to get title/caption
         title = ""
         caption = ""
         
-        if 'ImageDescription' in exif:
-            caption = str(exif['ImageDescription'])
+        # Try IPTC first (this is what macOS uses for Title)
+        try:
+            from PIL import IptcImagePlugin
+            iptc = IptcImagePlugin.getiptcinfo(img)
+            if iptc:
+                # IPTC Object Name (2, 5) = Title/Headline
+                if (2, 5) in iptc:
+                    val = iptc[(2, 5)]
+                    if isinstance(val, bytes):
+                        title = val.decode('utf-8', errors='ignore').strip()
+                    elif isinstance(val, list) and val:
+                        title = val[0].decode('utf-8', errors='ignore').strip() if isinstance(val[0], bytes) else str(val[0]).strip()
+                    else:
+                        title = str(val).strip()
+                
+                # IPTC Headline (2, 105) as backup title
+                if not title and (2, 105) in iptc:
+                    val = iptc[(2, 105)]
+                    if isinstance(val, bytes):
+                        title = val.decode('utf-8', errors='ignore').strip()
+                    else:
+                        title = str(val).strip()
+                
+                # IPTC Caption/Abstract (2, 120)
+                if (2, 120) in iptc:
+                    val = iptc[(2, 120)]
+                    if isinstance(val, bytes):
+                        caption = val.decode('utf-8', errors='ignore').strip()
+                    else:
+                        caption = str(val).strip()
+        except Exception as e:
+            print(f"IPTC read error: {e}")
+        
+        # Fall back to EXIF if no IPTC title
+        if not title and 'ImageDescription' in exif:
+            val = exif['ImageDescription']
+            if isinstance(val, bytes):
+                try:
+                    title = val.decode('utf-8').strip()
+                except:
+                    title = val.decode('latin-1', errors='ignore').strip()
+            else:
+                title = str(val).strip()
+        
+        if not title and 'DocumentName' in exif:
+            title = str(exif['DocumentName']).strip()
             
-        # XP tags are encoded in UCS-2 LE (use tag numbers since they may not be in TAGS dict)
+        # XPTitle (Windows)
         for key in list(exif.keys()):
-            if key == 0x9c9b or key == 'XPTitle':  # XPTitle
+            if key == 0x9c9b or key == 'XPTitle':
                 try:
                     val = exif[key]
                     if isinstance(val, bytes):
-                        title = val.decode('utf-16le').rstrip('\\x00')
-                    elif isinstance(val, str):
-                        title = val
+                        decoded = val.decode('utf-16le').rstrip('\x00').strip()
+                        if decoded and not title:
+                            title = decoded
                 except:
                     pass
-            if key == 0x9c9c or key == 'XPComment':  # XPComment
+            if key == 0x9c9c or key == 'XPComment':
                 try:
                     val = exif[key]
                     if isinstance(val, bytes):
-                        caption = val.decode('utf-16le').rstrip('\\x00')
-                    elif isinstance(val, str):
-                        caption = val
+                        decoded = val.decode('utf-16le').rstrip('\x00').strip()
+                        if decoded and not caption:
+                            caption = decoded
                 except:
                     pass
                 
@@ -192,14 +234,15 @@ def get_exif_data(image_path):
             'date_taken': str(exif.get('DateTimeOriginal', ''))
         }
     except Exception as e:
-        print(f"Error reading EXIF from {image_path}: {e}")
-        # Return basic info even if EXIF fails
+        print(f"Error reading metadata from {image_path}: {e}")
         try:
             img = Image.open(image_path)
             w, h = img.size
             return {'width': w, 'height': h, 'title': '', 'caption': '', 'make': '', 'model': '', 'date_taken': ''}
         except:
             return {'width': 0, 'height': 0, 'title': '', 'caption': '', 'make': '', 'model': '', 'date_taken': ''}
+
+
 
 def generate_thumbnail(image_path, thumb_path):
 
