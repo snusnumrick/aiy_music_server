@@ -138,6 +138,60 @@ class MusicEventHandler(FileSystemEventHandler):
             load_document_metadata()
             print("Metadata reload complete.")
 
+def decode_text(data):
+    """
+    Decode bytes or string with automatic encoding detection.
+    Handles: ASCII with nulls, mixed ASCII+UTF-16-LE, or pure UTF-16-LE.
+
+    Args:
+        data: bytes object or string
+
+    Returns:
+        str: decoded text
+    """
+    # Convert string to bytes if needed
+    if isinstance(data, str):
+        data = data.encode('latin-1')
+
+    # Check if it starts with ASCII (no null bytes in first ~10 bytes suggest ASCII timestamp)
+    first_null = data.find(b'\x00')
+
+    if first_null > 5:  # Likely has ASCII prefix (like "0:05:22")
+        # Split at first null byte and decode remaining as UTF-16-LE
+        remaining = data[first_null + 1:]
+        if remaining:
+            try:
+                text = remaining.decode('utf-16-le', errors='ignore')
+                text = text.replace('\x00', '')
+                return text.strip()
+            except:
+                return ""
+        return ""
+
+    # Check if this looks like UTF-16-LE (every other byte is \x00)
+    null_count = data[:20].count(b'\x00')  # Check first 20 bytes
+    if null_count > len(data[:20]) * 0.3:  # More than 30% nulls suggests UTF-16-LE
+        # UTF-16-LE: decode and remove prefix before first null character
+        try:
+            text = data.decode('utf-16-le', errors='ignore')
+            null_pos = text.find('\x00')
+            if null_pos != -1:
+                text = text[null_pos + 1:]
+            text = text.replace('\x00', '')
+            return text.strip()
+        except Exception as e:
+            return ""
+    else:
+        # Plain ASCII with some null/control bytes - extract only printable ASCII
+        try:
+            # Decode as ASCII and keep only printable characters
+            text = data.decode('ascii', errors='ignore')
+            # Remove all control characters (keeping only printable ASCII)
+            text = ''.join(char for char in text if char.isprintable() or char.isspace())
+            return text.strip()
+        except:
+            return ""
+
 def get_exif_data(image_path):
     """Extract EXIF and IPTC data from image (compatible with Pillow 6.x+)"""
     try:
@@ -190,40 +244,43 @@ def get_exif_data(image_path):
             print(f"IPTC read error: {e}")
         
         # Fall back to EXIF if no IPTC title
-        if not title and 'ImageDescription' in exif:
-            val = exif['ImageDescription']
-            if isinstance(val, bytes):
-                try:
-                    title = val.decode('utf-8').strip()
-                except:
-                    title = val.decode('latin-1', errors='ignore').strip()
-            else:
-                title = str(val).strip()
-        
-        if not title and 'DocumentName' in exif:
-            title = str(exif['DocumentName']).strip()
-            
+
         # XPTitle (Windows)
         for key in list(exif.keys()):
             if key == 0x9c9b or key == 'XPTitle':
                 try:
                     val = exif[key]
                     if isinstance(val, bytes):
-                        decoded = val.decode('utf-16le').rstrip('\x00').strip()
+                        decoded = decode_text(val)
                         if decoded and not title:
                             title = decoded
-                except:
+                except Exception as _e:
                     pass
             if key == 0x9c9c or key == 'XPComment':
                 try:
                     val = exif[key]
                     if isinstance(val, bytes):
-                        decoded = val.decode('utf-16le').rstrip('\x00').strip()
+                        decoded = decode_text(val)
                         if decoded and not caption:
                             caption = decoded
-                except:
+                except Exception as _e:
                     pass
-        
+
+        # if not title and 'DocumentName' in exif:
+        if 'DocumentName' in exif:
+            title = str(exif['DocumentName']).strip()
+
+        # if not caption and 'ImageDescription' in exif:
+        if 'ImageDescription' in exif:
+            val = exif['ImageDescription']
+            if isinstance(val, bytes):
+                try:
+                    caption = val.decode('utf-8').strip()
+                except Exception as _e:
+                    caption = val.decode('latin-1', errors='ignore').strip()
+            else:
+                caption = decode_text(val)
+
         # Get date - try EXIF first
         date_taken = str(exif.get('DateTimeOriginal', ''))
         
@@ -240,7 +297,7 @@ def get_exif_data(image_path):
                             date_taken = val.decode('utf-8', errors='ignore').strip()
                         else:
                             date_taken = str(val).strip()
-            except:
+            except Exception as _e:
                 pass
         
         # Fall back to file modification date if still no date
@@ -250,7 +307,7 @@ def get_exif_data(image_path):
                 mtime = os.path.getmtime(image_path)
                 from datetime import datetime
                 date_taken = datetime.fromtimestamp(mtime).strftime('%Y:%m:%d %H:%M:%S')
-            except:
+            except Exception as _e:
                 pass
                 
         return {
@@ -1490,6 +1547,8 @@ if __name__ == '__main__':
     print("=" * 50)
     print("AIY Music Server - Pi Zero Music Server")
     print("=" * 50)
+
+    get_exif_data("pictures/image_1765229010_A_cute_robot_painter_in_a_futu.jpg")
 
     print(f"Music folder: {MUSIC_FOLDER}")
 
