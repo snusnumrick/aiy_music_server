@@ -31,6 +31,10 @@ else
 fi
 REAL_GROUP=$(id -gn "$REAL_USER")
 
+# Make scripts executable
+SCRIPTS_DIR="${WORKING_DIR}/scripts"
+chmod +x "${SCRIPTS_DIR}/run.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -119,7 +123,7 @@ Group=${REAL_GROUP}
 WorkingDirectory=${WORKING_DIR}
 
 # Main Execution Command
-ExecStart=${WORKING_DIR}/music_server/bin/python ${WORKING_DIR}/app.py
+ExecStart=/bin/bash -c "${SCRIPTS_DIR}/run.sh"
 
 # Reload handler
 ExecReload=/bin/kill -HUP \$MAINPID
