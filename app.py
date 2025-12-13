@@ -20,7 +20,7 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 try:
-    from zeroconf import ServiceInfo, Zeroconf
+    from zeroconf import ServiceInfo, Zeroconf, NonUniqueNameException
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
@@ -70,6 +70,7 @@ ZEROCONF_INSTANCE = None
 SERVICE_NAME = "cubie"
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_PORT = 5001
+REGISTERED_SERVICE_NAME = SERVICE_NAME
 
 # WiFi Configuration
 WIFI_CONFIG_PATH = "/etc/wpa_supplicant/wpa_supplicant.conf"
@@ -722,8 +723,8 @@ def health_check():
         'status': 'healthy',
         'files_count': len(METADATA_CACHE),
         'music_folder': MUSIC_FOLDER,
-        'mdns_enabled': ZEROCONF_AVAILABLE,
-        'service_name': SERVICE_NAME if ZEROCONF_AVAILABLE else None
+        'mdns_enabled': ZEROCONF_INSTANCE is not None,
+        'service_name': REGISTERED_SERVICE_NAME if ZEROCONF_INSTANCE else None
     })
 
 @app.route('/api/config')
@@ -733,7 +734,7 @@ def get_config():
         'music_folder': MUSIC_FOLDER,
         'server_url': f'http://localhost:{SERVICE_PORT}',
         'server_port': SERVICE_PORT,
-        'service_name': SERVICE_NAME
+        'service_name': REGISTERED_SERVICE_NAME
     })
 
 @app.route('/api/delete/<filename>', methods=['DELETE'])
@@ -1414,7 +1415,7 @@ def get_wifi_status():
 
 def register_mdns_service():
     """Register mDNS service for network discovery"""
-    global ZEROCONF_INSTANCE
+    global ZEROCONF_INSTANCE, REGISTERED_SERVICE_NAME
 
     if not ZEROCONF_AVAILABLE:
         print("mDNS not available (zeroconf not installed)")
@@ -1457,15 +1458,13 @@ def register_mdns_service():
         print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
         return None
 
-    try:
-        # Create service info
-        service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}" # e.g., "cubie._http._tcp.local."
-        addresses = [socket.inet_aton(ip_address)]
-
-        info = ServiceInfo(
+    def build_service_info(name: str):
+        """Create a ServiceInfo object for the given name"""
+        service_name = f"{name}.{SERVICE_TYPE}" # e.g., "cubie._http._tcp.local."
+        return ServiceInfo(
             SERVICE_TYPE,
             service_name,
-            addresses=addresses,
+            addresses=[socket.inet_aton(ip_address)],
             port=SERVICE_PORT,
             properties={
                 'path': '/',
@@ -1474,13 +1473,34 @@ def register_mdns_service():
             server=server_local_hostname # This will be based on the system's hostname (e.g., "cubie.local" or "raspberrypi.local")
         )
 
-        # Register the service
+    registered_service_name = SERVICE_NAME
+
+    try:
+        info = build_service_info(registered_service_name)
+
+        # Register the service (try preferred name first)
         zeroconf = Zeroconf()
-        zeroconf.register_service(info)
+        try:
+            zeroconf.register_service(info)
+        except NonUniqueNameException:
+            # Clean up before retrying
+            zeroconf.close()
+
+            # Fallback: include hostname to avoid collisions
+            registered_service_name = f"{SERVICE_NAME}-{hostname}"
+            print("⚠ mDNS service name already in use on the network.")
+            print(f"  Trying fallback service name: {registered_service_name}")
+
+            info = build_service_info(registered_service_name)
+            zeroconf = Zeroconf()
+            zeroconf.register_service(info)
 
         ZEROCONF_INSTANCE = zeroconf
+        REGISTERED_SERVICE_NAME = registered_service_name
 
-        print(f"✓ mDNS service '{SERVICE_NAME}' registered: http://{server_local_hostname}:{SERVICE_PORT}")
+        service_display_name = f"{registered_service_name} (on {hostname})"
+
+        print(f"✓ mDNS service '{registered_service_name}' registered: http://{server_local_hostname}:{SERVICE_PORT}")
         print(f"  - Service Display Name: {service_display_name}")
         print(f"  - Local IP: {ip_address}")
         print(f"  - System Hostname: {hostname}")
@@ -1489,9 +1509,9 @@ def register_mdns_service():
         print(f"    • http://{server_local_hostname}:{SERVICE_PORT}")
         print(f"    • http://{ip_address}:{SERVICE_PORT}")
 
-        if hostname.lower() != SERVICE_NAME.lower():
-            print(f"  - Note: If your system hostname ('{hostname}') differs from the preferred service name ('{SERVICE_NAME}'),")
-            print(f"          you may need to access it at http://{hostname}.local:{SERVICE_PORT} or change your system hostname to '{SERVICE_NAME}'.")
+        if hostname.lower() != registered_service_name.lower():
+            print(f"  - Note: If your system hostname ('{hostname}') differs from the registered service name ('{registered_service_name}'),")
+            print(f"          you may need to access it at http://{hostname}.local:{SERVICE_PORT} or change your system hostname.")
 
         # Verify the service is registered on the correct interface
         import subprocess
