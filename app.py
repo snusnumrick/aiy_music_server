@@ -1445,6 +1445,18 @@ def register_mdns_service():
     server_local_hostname = f"{hostname}.local."
     service_display_name = f"{SERVICE_NAME} (on {hostname})" # Display actual system hostname
 
+    if not ip_address or ip_address.startswith("127."):
+        # Bail out early with a clear message instead of letting zeroconf throw
+        print("⚠ Warning: Could not register mDNS service")
+        print("  Error: No usable IP address available for mDNS (got loopback/offline)")
+        print("  Troubleshooting:")
+        print("  - Connect to WiFi or Ethernet and restart the service")
+        print("  - Check network status: hostname -I")
+        print("  - Verify wlan0 is up: ip link show wlan0")
+        print(f"  You can still access the server at: http://{ip_address or 'localhost'}:{SERVICE_PORT}")
+        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
+        return None
+
     try:
         # Create service info
         service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}" # e.g., "cubie._http._tcp.local."
@@ -1500,11 +1512,18 @@ def register_mdns_service():
         return zeroconf
     except Exception as e:
         import traceback
-        error_msg = str(e) if str(e) else "Unknown error"
+        error_msg = str(e) if str(e) else repr(e)
         print(f"⚠ Warning: Could not register mDNS service")
         print(f"  Error: {error_msg}")
-        print(f"  You can still access the server at: http://{ip_address}:5001")
-        print(f"  Or: http://{hostname}.local:5001")
+        print(f"  Error type: {type(e).__name__}")
+        print(f"  Context:")
+        print(f"    - Hostname: {hostname}")
+        print(f"    - IP address: {ip_address}")
+        print(f"    - Service name: {SERVICE_NAME}")
+        print(f"  Traceback (most recent call last):")
+        traceback.print_exc()
+        print(f"  You can still access the server at: http://{ip_address}:{SERVICE_PORT}")
+        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
         print(f"  ")
         print(f"  Troubleshooting:")
         print(f"  - Ensure network is ready before starting")
