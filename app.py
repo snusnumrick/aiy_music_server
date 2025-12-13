@@ -14,6 +14,7 @@ from watchdog.events import FileSystemEventHandler
 import threading
 from PIL import Image, ExifTags
 import shutil
+import subprocess
 
 # Force unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
@@ -71,8 +72,10 @@ ZEROCONF_INSTANCE = None
 HOSTNAME = socket.gethostname().split('.')[0]
 SERVICE_NAME = os.environ.get("SERVICE_NAME", HOSTNAME)
 SERVICE_TYPE = "_http._tcp.local."
+SERVICE_TYPE_SHORT = SERVICE_TYPE.replace(".local.", "")  # For avahi-publish-service
 SERVICE_PORT = 5001
 REGISTERED_SERVICE_NAME = SERVICE_NAME
+AVAHI_PROCESS = None
 
 # WiFi Configuration
 WIFI_CONFIG_PATH = "/etc/wpa_supplicant/wpa_supplicant.conf"
@@ -725,8 +728,8 @@ def health_check():
         'status': 'healthy',
         'files_count': len(METADATA_CACHE),
         'music_folder': MUSIC_FOLDER,
-        'mdns_enabled': ZEROCONF_INSTANCE is not None,
-        'service_name': REGISTERED_SERVICE_NAME if ZEROCONF_INSTANCE else None
+        'mdns_enabled': (ZEROCONF_INSTANCE is not None) or (AVAHI_PROCESS is not None),
+        'service_name': REGISTERED_SERVICE_NAME if (ZEROCONF_INSTANCE or AVAHI_PROCESS) else None
     })
 
 @app.route('/api/config')
@@ -1417,7 +1420,7 @@ def get_wifi_status():
 
 def register_mdns_service():
     """Register mDNS service for network discovery"""
-    global ZEROCONF_INSTANCE, REGISTERED_SERVICE_NAME
+    global ZEROCONF_INSTANCE, REGISTERED_SERVICE_NAME, AVAHI_PROCESS
 
     if not ZEROCONF_AVAILABLE:
         print("mDNS not available (zeroconf not installed)")
@@ -1560,11 +1563,39 @@ def register_mdns_service():
         print(f"  - Check if avahi-daemon is running: sudo systemctl status avahi-daemon")
         print(f"  - Verify network connectivity: ping 8.8.8.8")
         print(f"  - Try manual service registration with avahi-browse")
+        # Try avahi-publish-service fallback even if Zeroconf failed
+        avahi_bin = shutil.which("avahi-publish-service")
+        if avahi_bin:
+            try:
+                AVAHI_PROCESS = subprocess.Popen(
+                    [avahi_bin, registered_service_name, SERVICE_TYPE_SHORT, str(SERVICE_PORT), "/"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                REGISTERED_SERVICE_NAME = registered_service_name
+                print(f"  - Advertising via avahi-publish-service fallback ({registered_service_name}.{SERVICE_TYPE_SHORT})")
+            except Exception as avahi_err:
+                print(f"  - Failed to start avahi-publish-service fallback: {avahi_err}")
         return None
+
+    # Start avahi-publish-service as a backup broadcaster if available
+    avahi_bin = shutil.which("avahi-publish-service")
+    if avahi_bin:
+        try:
+            AVAHI_PROCESS = subprocess.Popen(
+                [avahi_bin, registered_service_name, SERVICE_TYPE_SHORT, str(SERVICE_PORT), "/"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print(f"  - Also advertising via avahi-publish-service ({registered_service_name}.{SERVICE_TYPE_SHORT})")
+        except Exception as e:
+            print(f"  - Failed to start avahi-publish-service fallback: {e}")
+
+    return ZEROCONF_INSTANCE
 
 def unregister_mdns_service():
     """Unregister mDNS service on shutdown"""
-    global ZEROCONF_INSTANCE
+    global ZEROCONF_INSTANCE, AVAHI_PROCESS
     if ZEROCONF_INSTANCE:
         try:
             ZEROCONF_INSTANCE.close()
@@ -1573,6 +1604,15 @@ def unregister_mdns_service():
             print(f"Error unregistering mDNS service: {e}")
         finally:
             ZEROCONF_INSTANCE = None
+    if AVAHI_PROCESS:
+        try:
+            AVAHI_PROCESS.terminate()
+            AVAHI_PROCESS.wait(timeout=2)
+            print("✓ avahi-publish-service stopped")
+        except Exception as e:
+            print(f"Error stopping avahi-publish-service: {e}")
+        finally:
+            AVAHI_PROCESS = None
 
 def start_file_monitor():
     """Start the file system monitor"""
