@@ -20,7 +20,7 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 try:
-    from zeroconf import ServiceInfo, Zeroconf, NonUniqueNameException, IPVersion
+    from zeroconf import ServiceInfo, Zeroconf, NonUniqueNameException, IPVersion, InterfaceChoice
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
@@ -1482,7 +1482,7 @@ def register_mdns_service():
 
         # Register the service (try preferred name first)
         zeroconf = Zeroconf(
-            interfaces=[ip_address],  # Advertise on the active IPv4
+            interfaces=InterfaceChoice.All,  # Advertise on all interfaces (IPv4 only)
             ip_version=IPVersion.V4Only
         )
         try:
@@ -1498,7 +1498,7 @@ def register_mdns_service():
 
             info = build_service_info(registered_service_name)
             zeroconf = Zeroconf(
-                interfaces=[ip_address],
+                interfaces=InterfaceChoice.All,
                 ip_version=IPVersion.V4Only
             )
             zeroconf.register_service(info)
