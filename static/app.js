@@ -39,7 +39,14 @@ const elements = {
     imageMeta: document.getElementById('image-meta'),
     imageCloseBtn: document.getElementById('image-close-btn'),
     prevImageBtn: document.getElementById('prev-image-btn'),
-    nextImageBtn: document.getElementById('next-image-btn')
+    nextImageBtn: document.getElementById('next-image-btn'),
+
+    // Document Viewer
+    documentViewer: document.getElementById('document-viewer'),
+    documentTitle: document.getElementById('document-title'),
+    documentMeta: document.getElementById('document-meta'),
+    documentContent: document.getElementById('document-content'),
+    documentCloseBtn: document.getElementById('document-close-btn')
 };
 
 
@@ -181,8 +188,8 @@ function renderDocumentsList() {
         return;
     }
 
-    elements.documentsList.innerHTML = documentsData.map((doc) => `
-        <a href="${doc.url}" target="_blank" class="block bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
+    elements.documentsList.innerHTML = documentsData.map((doc, index) => `
+        <a href="${doc.url}" data-doc-index="${index}" class="block bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
             <div class="flex items-center gap-3">
                 <div class="bg-primary/10 p-3 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
                     <i data-lucide="file-text" class="w-6 h-6"></i>
@@ -195,13 +202,173 @@ function renderDocumentsList() {
                     </div>
                 </div>
                 <div class="text-gray-400">
-                    <i data-lucide="download" class="w-5 h-5"></i>
+                    <i data-lucide="${doc.type === 'md' ? 'maximize-2' : 'download'}" class="w-5 h-5"></i>
                 </div>
             </div>
         </a>
     `).join('');
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function openDocument(index) {
+    if (index < 0 || index >= documentsData.length) return;
+    const doc = documentsData[index];
+
+    // Only intercept markdown; other types open in a new tab
+    if (doc.type !== 'md') {
+        window.open(doc.url, '_blank');
+        return;
+    }
+
+    try {
+        elements.status.textContent = 'Opening document...';
+        const response = await fetch(doc.url);
+        if (!response.ok) throw new Error(`Failed to load ${doc.filename}`);
+        const text = await response.text();
+        const html = markdownToHtml(text);
+        showDocumentViewer(doc, html);
+        elements.status.textContent = 'Ready';
+    } catch (error) {
+        console.error('Error opening document:', error);
+        showError('Could not open document; downloaded instead.');
+        window.open(doc.url, '_blank');
+    }
+}
+
+function showDocumentViewer(doc, html) {
+    elements.documentTitle.textContent = doc.filename;
+    elements.documentMeta.textContent = `${formatFileSize(doc.size)} • ${formatDate(doc.modified)}`;
+    elements.documentContent.innerHTML = html;
+    elements.documentViewer.classList.remove('hidden');
+    elements.documentViewer.style.display = 'flex';
+}
+
+function hideDocumentViewer() {
+    elements.documentViewer.classList.add('hidden');
+    elements.documentViewer.style.display = 'none';
+    elements.documentContent.innerHTML = '';
+}
+
+function markdownToHtml(markdown) {
+    const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+    let html = '';
+    let inList = false;
+    let listTag = '';
+    let inCode = false;
+    for (let idx = 0; idx < lines.length; idx++) {
+        const line = lines[idx];
+
+        if (line.trim().startsWith('```')) {
+            if (!inCode) {
+                inCode = true;
+                html += '<pre><code>';
+            } else {
+                inCode = false;
+                html += '</code></pre>';
+            }
+            return;
+        }
+
+        if (inCode) {
+            html += `${escapeHtml(line)}\n`;
+            continue;
+        }
+
+        // Tables: header | header2
+        const nextLine = lines[idx + 1] || '';
+        const isTableHeader = line.includes('|') && /^\s*\|?(.+\|)+.+\|?\s*$/.test(line);
+        const isSeparator = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(nextLine);
+        if (isTableHeader && isSeparator) {
+            if (inList) {
+                html += listTag === 'ol' ? '</ol>' : '</ul>';
+                inList = false;
+                listTag = '';
+            }
+            const headers = line.split('|').map((cell) => inlineMarkdown(cell.trim())).filter(Boolean);
+            const rows = [];
+            idx += 1; // skip separator line
+            while (idx + 1 < lines.length) {
+                const rowLine = lines[idx + 1];
+                if (!rowLine.includes('|')) break;
+                rows.push(rowLine.split('|').map((cell) => inlineMarkdown(cell.trim())).filter(Boolean));
+                idx += 1;
+            }
+            html += '<table class="doc-table"><thead><tr>';
+            headers.forEach((h) => html += `<th>${h}</th>`);
+            html += '</tr></thead><tbody>';
+            rows.forEach((row) => {
+                html += '<tr>';
+                row.forEach((cell) => html += `<td>${cell}</td>`);
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            continue;
+        }
+
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+            const level = headingMatch[1].length;
+            html += `<h${level}>${inlineMarkdown(headingMatch[2])}</h${level}>`;
+            continue;
+        }
+
+        const listMatch = line.match(/^[-*]\s+(.*)$/);
+        const orderedMatch = line.match(/^\d+\.\s+(.*)$/);
+        if (listMatch || orderedMatch) {
+            const targetTag = orderedMatch ? 'ol' : 'ul';
+            if (!inList || listTag !== targetTag) {
+                if (inList) {
+                    html += listTag === 'ol' ? '</ol>' : '</ul>';
+                }
+                html += targetTag === 'ol' ? '<ol>' : '<ul>';
+                inList = true;
+                listTag = targetTag;
+            }
+            const content = orderedMatch ? orderedMatch[1] : listMatch[1];
+            html += `<li>${inlineMarkdown(content)}</li>`;
+            continue;
+        }
+
+        if (inList) {
+            html += listTag === 'ol' ? '</ol>' : '</ul>';
+            inList = false;
+            listTag = '';
+        }
+
+        const blockquoteMatch = line.match(/^>\s?(.*)$/);
+        if (blockquoteMatch) {
+            html += `<blockquote>${inlineMarkdown(blockquoteMatch[1])}</blockquote>`;
+            continue;
+        }
+
+        if (/^(-{3,}|_{3,}|\*{3,})$/.test(line.trim())) {
+            html += '<hr>';
+            continue;
+        }
+
+        if (line.trim() === '') {
+            html += '';
+            continue;
+        }
+
+        html += `<p>${inlineMarkdown(line)}</p>`;
+    }
+
+    if (inList) html += '</ul>';
+    if (inCode) html += '</code></pre>';
+    return html || '<p>No content</p>';
+}
+
+function inlineMarkdown(text) {
+    let escaped = escapeHtml(text);
+    escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    escaped = escaped.replace(/!\[(.*?)\]\((.+?)\)/g, '<img src="$2" alt="$1" loading="lazy">');
+    escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    escaped = escaped.replace(/(\bhttps?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    return escaped;
 }
 
 // Image Viewer Logic
@@ -470,6 +637,14 @@ elements.deleteModal.addEventListener('click', (e) => {
     }
 });
 
+elements.documentsList.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-doc-index]');
+    if (!target) return;
+    e.preventDefault();
+    const index = Number(target.dataset.docIndex);
+    openDocument(index);
+});
+
 document.getElementById('fullscreen-close-btn').addEventListener('click', hideFullscreenLyrics);
 document.getElementById('exit-fullscreen-btn').addEventListener('click', hideFullscreenLyrics);
 document.getElementById('fullscreen-font-smaller').addEventListener('click', () => {
@@ -495,6 +670,13 @@ document.getElementById('fullscreen-lyrics').addEventListener('click', (e) => {
     }
 });
 
+elements.documentCloseBtn?.addEventListener('click', hideDocumentViewer);
+elements.documentViewer?.addEventListener('click', (e) => {
+    if (e.target.id === 'document-viewer') {
+        hideDocumentViewer();
+    }
+});
+
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         if (!elements.deleteModal.classList.contains('hidden')) {
@@ -504,6 +686,8 @@ document.addEventListener('keydown', (e) => {
         } else if (document.getElementById('fullscreen-lyrics').style.display === 'flex' ||
                    !document.getElementById('fullscreen-lyrics').classList.contains('hidden')) {
             hideFullscreenLyrics();
+        } else if (elements.documentViewer && elements.documentViewer.style.display === 'flex') {
+            hideDocumentViewer();
         }
     }
 });
