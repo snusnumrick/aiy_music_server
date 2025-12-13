@@ -20,7 +20,7 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 try:
-    from zeroconf import ServiceInfo, Zeroconf, NonUniqueNameException
+    from zeroconf import ServiceInfo, Zeroconf, NonUniqueNameException, IPVersion
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
@@ -1481,7 +1481,10 @@ def register_mdns_service():
         info = build_service_info(registered_service_name)
 
         # Register the service (try preferred name first)
-        zeroconf = Zeroconf()
+        zeroconf = Zeroconf(
+            interfaces=[ip_address],  # Advertise on the active IPv4
+            ip_version=IPVersion.V4Only
+        )
         try:
             zeroconf.register_service(info)
         except NonUniqueNameException:
@@ -1494,7 +1497,10 @@ def register_mdns_service():
             print(f"  Trying fallback service name: {registered_service_name}")
 
             info = build_service_info(registered_service_name)
-            zeroconf = Zeroconf()
+            zeroconf = Zeroconf(
+                interfaces=[ip_address],
+                ip_version=IPVersion.V4Only
+            )
             zeroconf.register_service(info)
 
         ZEROCONF_INSTANCE = zeroconf
