@@ -67,7 +67,9 @@ FILE_CHANGE_LOCK = threading.Lock()
 
 # mDNS Configuration
 ZEROCONF_INSTANCE = None
-SERVICE_NAME = "cubie"
+# Default mDNS service name uses system hostname unless overridden by env var
+HOSTNAME = socket.gethostname().split('.')[0]
+SERVICE_NAME = os.environ.get("SERVICE_NAME", HOSTNAME)
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_PORT = 5001
 REGISTERED_SERVICE_NAME = SERVICE_NAME
@@ -1522,10 +1524,12 @@ def register_mdns_service():
                 text=True,
                 timeout=5
             )
-            if 'cubie-server' in result.stdout:
-                print(f"  - mDNS service visible on network")
+            output = result.stdout.lower()
+            if registered_service_name.lower() in output or SERVICE_NAME.lower() in output:
+                print(f"  - mDNS service visible on network (via avahi-browse)")
             else:
-                print(f"  - Warning: Service not visible in avahi-browse")
+                print(f"  - Warning: Service not visible in avahi-browse output")
+                print(f"    (checked for '{registered_service_name}' / '{SERVICE_NAME}')")
         except:
             pass
 
