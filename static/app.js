@@ -4,6 +4,8 @@ let currentTab = 'music';
 let picturesData = [];
 let documentsData = [];
 let currentImageIndex = -1;
+let touchStartX = null;
+let touchStartY = null;
 let currentFontSize = 'medium';
 let deleteTrackIndex = null;
 
@@ -437,6 +439,34 @@ function prevImage() {
     }
 }
 
+function resetImageTouchTracking() {
+    touchStartX = null;
+    touchStartY = null;
+}
+
+function handleImageTouchStart(event) {
+    if (event.touches.length !== 1) return;
+    touchStartX = event.touches[0].clientX;
+    touchStartY = event.touches[0].clientY;
+}
+
+function handleImageTouchEnd(event) {
+    if (touchStartX === null || touchStartY === null) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    resetImageTouchTracking();
+
+    // Ignore mostly vertical gestures and small taps
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+
+    if (deltaX < 0) {
+        nextImage();
+    } else {
+        prevImage();
+    }
+}
+
 function playTrack(index) {
     if (index < 0 || index >= musicData.length) return;
 
@@ -722,6 +752,9 @@ elements.tabs.forEach(tab => {
 elements.imageCloseBtn?.addEventListener('click', closeFullscreenImage);
 elements.prevImageBtn?.addEventListener('click', (e) => { e.stopPropagation(); prevImage(); });
 elements.nextImageBtn?.addEventListener('click', (e) => { e.stopPropagation(); nextImage(); });
+elements.fullscreenImage?.addEventListener('touchstart', handleImageTouchStart, { passive: true });
+elements.fullscreenImage?.addEventListener('touchend', handleImageTouchEnd);
+elements.fullscreenImage?.addEventListener('touchcancel', resetImageTouchTracking);
 
 // Keyboard nav
 document.addEventListener('keydown', (e) => {
