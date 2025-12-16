@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Cubie Music Server</title>
+    <title>Cubie Server</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>">
     <script src="/static/tailwind.js"></script>
     <script src="/static/lucide.min.js"></script>
@@ -30,7 +30,7 @@
         <header class="app-header">
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-3xl md:text-4xl font-bold text-primary mb-2">Cubie Music</h1>
+                    <h1 class="text-3xl md:text-4xl font-bold text-primary mb-2">Cubie Files</h1>
                     <p class="text-gray-600 dark:text-gray-300 text-lg">cubie.local</p>
                 </div>
                 <div class="text-right">
@@ -62,8 +62,33 @@
         <!-- Error -->
         <div id="error-message" class="error bg-red-500 text-white p-6 m-6 rounded-xl text-center text-xl shadow-lg" style="display: none;"></div>
 
+        <!-- Tabs -->
+        <div class="flex space-x-1 bg-white/50 dark:bg-gray-800/50 p-1 rounded-xl mb-4 overflow-x-auto">
+            <button class="tab-btn active flex-1 py-2 px-4 rounded-lg font-bold text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50 transition-all text-center whitespace-nowrap" data-tab="music">
+                Music
+            </button>
+            <button class="tab-btn flex-1 py-2 px-4 rounded-lg font-bold text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50 transition-all text-center whitespace-nowrap" data-tab="pictures">
+                Pictures
+            </button>
+            <button class="tab-btn flex-1 py-2 px-4 rounded-lg font-bold text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50 transition-all text-center whitespace-nowrap" data-tab="documents">
+                Documents
+            </button>
+        </div>
+
         <!-- Music List -->
-        <div id="music-list" class="flex-1 p-4 md:p-6 overflow-y-auto"></div>
+        <div id="music-view" class="view-container flex-1 overflow-y-auto">
+            <div id="music-list" class="p-4 md:p-6"></div>
+        </div>
+
+        <!-- Pictures Grid -->
+        <div id="pictures-view" class="view-container hidden flex-1 overflow-y-auto p-4 md:p-6">
+            <div id="pictures-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
+        </div>
+
+        <!-- Documents List -->
+        <div id="documents-view" class="view-container hidden flex-1 overflow-y-auto">
+            <div id="documents-list" class="p-4 md:p-6"></div>
+        </div>
 
         <!-- Player -->
         <div class="player-container">
@@ -114,6 +139,42 @@
                     Delete
                 </button>
             </div>
+        </div>
+    </div>
+
+    <div id="fullscreen-image" class="fixed inset-0 bg-black z-50 hidden flex-col justify-center items-center">
+        <button class="absolute top-4 right-4 text-white hover:text-primary text-4xl leading-none z-50 p-2" id="image-close-btn">&times;</button>
+        
+        <div class="flex-1 w-full flex items-center justify-center relative overflow-hidden">
+            <button id="prev-image-btn" class="absolute left-2 md:left-4 p-2 md:p-4 text-white/50 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-all z-10">
+                <i data-lucide="chevron-left" class="w-8 h-8 md:w-12 md:h-12"></i>
+            </button>
+            
+            <img id="fullscreen-img-display" src="" alt="Fullscreen view" class="max-w-full max-h-full object-contain transition-transform duration-200">
+            
+            <button id="next-image-btn" class="absolute right-2 md:right-4 p-2 md:p-4 text-white/50 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-all z-10">
+                <i data-lucide="chevron-right" class="w-8 h-8 md:w-12 md:h-12"></i>
+            </button>
+        </div>
+        
+        <div class="w-full bg-black/60 backdrop-blur-md p-4 md:p-6 absolute bottom-0">
+            <h2 id="image-title" class="text-white text-xl md:text-2xl font-bold mb-1"></h2>
+            <p id="image-caption" class="text-gray-300 text-sm md:text-base"></p>
+            <div class="text-gray-500 text-xs mt-2" id="image-meta"></div>
+        </div>
+    </div>
+
+    <!-- Document Viewer -->
+    <div id="document-viewer" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4 md:p-8">
+        <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-5xl h-full flex flex-col overflow-hidden border border-white/10" style="max-height: 90vh;">
+            <div class="flex items-start justify-between gap-4 p-4 md:p-6 border-b border-gray-100 dark:border-gray-800">
+                <div class="min-w-0">
+                    <h3 id="document-title" class="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 break-words"></h3>
+                    <p id="document-meta" class="text-sm text-gray-500 dark:text-gray-400 mt-1"></p>
+                </div>
+                <button id="document-close-btn" class="text-gray-500 hover:text-primary text-4xl leading-none px-2 transition-colors">&times;</button>
+            </div>
+            <div id="document-content" class="flex-1 overflow-y-auto p-4 md:p-6 doc-content text-gray-900 dark:text-gray-100 bg-white/80 dark:bg-gray-900/90"></div>
         </div>
     </div>
 

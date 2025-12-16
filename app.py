@@ -9,14 +9,19 @@ import sys
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 import threading
+from PIL import Image, ExifTags
+import shutil
+import subprocess
 
 # Force unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 try:
-    from zeroconf import ServiceInfo, Zeroconf
+    from zeroconf import ServiceInfo, Zeroconf, NonUniqueNameException, IPVersion, InterfaceChoice
     ZEROCONF_AVAILABLE = True
 except ImportError:
     ZEROCONF_AVAILABLE = False
@@ -52,14 +57,25 @@ def handle_exception(e):
 
 # Configuration
 MUSIC_FOLDER = os.path.join(os.path.dirname(__file__), 'music')
-METADATA_CACHE = []
+PICTURES_FOLDER = os.path.join(os.path.dirname(__file__), 'pictures')
+DOCUMENTS_FOLDER = os.path.join(os.path.dirname(__file__), 'documents')
+THUMBNAILS_FOLDER = os.path.join(os.path.dirname(__file__), '.thumbnails')
+
+METADATA_CACHE = [] # Music cache
+PICTURES_CACHE = []
+DOCUMENTS_CACHE = []
 FILE_CHANGE_LOCK = threading.Lock()
 
 # mDNS Configuration
 ZEROCONF_INSTANCE = None
-SERVICE_NAME = "cubie"
+# Default mDNS service name uses system hostname unless overridden by env var
+HOSTNAME = socket.gethostname().split('.')[0]
+SERVICE_NAME = os.environ.get("SERVICE_NAME", HOSTNAME)
 SERVICE_TYPE = "_http._tcp.local."
+SERVICE_TYPE_SHORT = SERVICE_TYPE.replace(".local.", "")  # For avahi-publish-service
 SERVICE_PORT = 5001
+REGISTERED_SERVICE_NAME = SERVICE_NAME
+AVAHI_PROCESS = None
 
 # WiFi Configuration
 WIFI_CONFIG_PATH = "/etc/wpa_supplicant/wpa_supplicant.conf"
@@ -77,31 +93,40 @@ class MusicEventHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
-        if not event.src_path.endswith('.mp3'):
-            return
+        # Check extension
+        is_music = event.src_path.lower().endswith('.mp3')
+        is_picture = event.src_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))
+        is_doc = not event.is_directory and not is_music and not is_picture and not os.path.basename(event.src_path).startswith('.')
 
-        print(f"File created: {event.src_path}")
-        self._trigger_reload()
+        if is_music or is_picture or is_doc:
+            print(f"File created: {event.src_path}")
+            self._trigger_reload()
 
     def on_deleted(self, event):
         if event.is_directory:
             return
 
-        if not event.src_path.endswith('.mp3'):
-            return
+        # Check extension
+        is_music = event.src_path.lower().endswith('.mp3')
+        is_picture = event.src_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))
+        is_doc = not event.is_directory and not is_music and not is_picture and not os.path.basename(event.src_path).startswith('.')
 
-        print(f"File deleted: {event.src_path}")
-        self._trigger_reload()
+        if is_music or is_picture or is_doc:
+            print(f"File deleted: {event.src_path}")
+            self._trigger_reload()
 
     def on_modified(self, event):
         if event.is_directory:
             return
 
-        if not event.src_path.endswith('.mp3'):
-            return
+        # Check extension to decide if reload is needed
+        is_music = event.src_path.lower().endswith('.mp3')
+        is_picture = event.src_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))
+        is_doc = not event.is_directory and not is_music and not is_picture and not os.path.basename(event.src_path).startswith('.')
 
-        print(f"File modified: {event.src_path}")
-        self._trigger_reload()
+        if is_music or is_picture or is_doc:
+            print(f"File modified: {event.src_path}")
+            self._trigger_reload()
 
     def _trigger_reload(self):
         current_time = time.time()
@@ -115,7 +140,308 @@ class MusicEventHandler(FileSystemEventHandler):
         with FILE_CHANGE_LOCK:
             print("Lock acquired. Reloading metadata...")
             load_metadata()
+            load_picture_metadata()
+            load_document_metadata()
             print("Metadata reload complete.")
+
+def decode_text(data):
+    """
+    Decode bytes or string with automatic encoding detection.
+    Handles: ASCII with nulls, mixed ASCII+UTF-16-LE, or pure UTF-16-LE.
+
+    Args:
+        data: bytes object or string
+
+    Returns:
+        str: decoded text
+    """
+    # Convert string to bytes if needed
+    if isinstance(data, str):
+        data = data.encode('latin-1')
+
+    # Check if it starts with ASCII (no null bytes in first ~10 bytes suggest ASCII timestamp)
+    first_null = data.find(b'\x00')
+
+    if first_null > 5:  # Likely has ASCII prefix (like "0:05:22")
+        # Split at first null byte and decode remaining as UTF-16-LE
+        remaining = data[first_null + 1:]
+        if remaining:
+            try:
+                text = remaining.decode('utf-16-le', errors='ignore')
+                text = text.replace('\x00', '')
+                return text.strip()
+            except:
+                return ""
+        return ""
+
+    # Check if this looks like UTF-16-LE (every other byte is \x00)
+    null_count = data[:20].count(b'\x00')  # Check first 20 bytes
+    if null_count > len(data[:20]) * 0.3:  # More than 30% nulls suggests UTF-16-LE
+        # UTF-16-LE: decode and remove prefix before first null character
+        try:
+            text = data.decode('utf-16-le', errors='ignore')
+            null_pos = text.find('\x00')
+            if null_pos != -1:
+                text = text[null_pos + 1:]
+            text = text.replace('\x00', '')
+            return text.strip()
+        except Exception as e:
+            return ""
+    else:
+        # Plain ASCII with some null/control bytes - extract only printable ASCII
+        try:
+            # Decode as ASCII and keep only printable characters
+            text = data.decode('ascii', errors='ignore')
+            # Remove all control characters (keeping only printable ASCII)
+            text = ''.join(char for char in text if char.isprintable() or char.isspace())
+            return text.strip()
+        except:
+            return ""
+
+def get_exif_data(image_path):
+    """Extract EXIF and IPTC data from image (compatible with Pillow 6.x+)"""
+    try:
+        img = Image.open(image_path)
+        width, height = img.size
+        
+        # Try to get EXIF data safely
+        exif = {}
+        try:
+            raw_exif = img._getexif()
+            if raw_exif:
+                exif = { ExifTags.TAGS.get(k, k): v for k, v in raw_exif.items() }
+        except (AttributeError, TypeError):
+            pass
+        
+        title = ""
+        caption = ""
+        
+        # Try IPTC first (this is what macOS uses for Title)
+        try:
+            from PIL import IptcImagePlugin
+            iptc = IptcImagePlugin.getiptcinfo(img)
+            if iptc:
+                # IPTC Object Name (2, 5) = Title/Headline
+                if (2, 5) in iptc:
+                    val = iptc[(2, 5)]
+                    if isinstance(val, bytes):
+                        title = val.decode('utf-8', errors='ignore').strip()
+                    elif isinstance(val, list) and val:
+                        title = val[0].decode('utf-8', errors='ignore').strip() if isinstance(val[0], bytes) else str(val[0]).strip()
+                    else:
+                        title = str(val).strip()
+                
+                # IPTC Headline (2, 105) as backup title
+                if not title and (2, 105) in iptc:
+                    val = iptc[(2, 105)]
+                    if isinstance(val, bytes):
+                        title = val.decode('utf-8', errors='ignore').strip()
+                    else:
+                        title = str(val).strip()
+                
+                # IPTC Caption/Abstract (2, 120)
+                if (2, 120) in iptc:
+                    val = iptc[(2, 120)]
+                    if isinstance(val, bytes):
+                        caption = val.decode('utf-8', errors='ignore').strip()
+                    else:
+                        caption = str(val).strip()
+        except Exception as e:
+            print(f"IPTC read error: {e}")
+        
+        # Fall back to EXIF if no IPTC title
+
+        # XPTitle (Windows)
+        for key in list(exif.keys()):
+            if key == 0x9c9b or key == 'XPTitle':
+                try:
+                    val = exif[key]
+                    if isinstance(val, bytes):
+                        decoded = decode_text(val)
+                        if decoded and not title:
+                            title = decoded
+                except Exception as _e:
+                    pass
+            if key == 0x9c9c or key == 'XPComment':
+                try:
+                    val = exif[key]
+                    if isinstance(val, bytes):
+                        decoded = decode_text(val)
+                        if decoded and not caption:
+                            caption = decoded
+                except Exception as _e:
+                    pass
+
+        # if not title and 'DocumentName' in exif:
+        if 'DocumentName' in exif:
+            title = str(exif['DocumentName']).strip()
+
+        # if not caption and 'ImageDescription' in exif:
+        if 'ImageDescription' in exif:
+            val = exif['ImageDescription']
+            if isinstance(val, bytes):
+                try:
+                    caption = val.decode('utf-8').strip()
+                except Exception as _e:
+                    caption = val.decode('latin-1', errors='ignore').strip()
+            else:
+                caption = decode_text(val)
+
+        # Get date - try EXIF first
+        date_taken = str(exif.get('DateTimeOriginal', ''))
+        
+        # Try IPTC date if no EXIF date
+        if not date_taken:
+            try:
+                from PIL import IptcImagePlugin
+                iptc = IptcImagePlugin.getiptcinfo(img)
+                if iptc:
+                    # IPTC Date Created (2, 55) + Time Created (2, 60)
+                    if (2, 55) in iptc:
+                        val = iptc[(2, 55)]
+                        if isinstance(val, bytes):
+                            date_taken = val.decode('utf-8', errors='ignore').strip()
+                        else:
+                            date_taken = str(val).strip()
+            except Exception as _e:
+                pass
+        
+        # Fall back to file modification date if still no date
+        if not date_taken:
+            try:
+                import os
+                mtime = os.path.getmtime(image_path)
+                from datetime import datetime
+                date_taken = datetime.fromtimestamp(mtime).strftime('%Y:%m:%d %H:%M:%S')
+            except Exception as _e:
+                pass
+                
+        return {
+            'width': width,
+            'height': height,
+            'title': title,
+            'caption': caption,
+            'make': str(exif.get('Make', '')),
+            'model': str(exif.get('Model', '')),
+            'date_taken': date_taken
+        }
+
+    except Exception as e:
+        print(f"Error reading metadata from {image_path}: {e}")
+        try:
+            img = Image.open(image_path)
+            w, h = img.size
+            return {'width': w, 'height': h, 'title': '', 'caption': '', 'make': '', 'model': '', 'date_taken': ''}
+        except:
+            return {'width': 0, 'height': 0, 'title': '', 'caption': '', 'make': '', 'model': '', 'date_taken': ''}
+
+
+
+def generate_thumbnail(image_path, thumb_path):
+
+    """Generate thumbnail for image"""
+    try:
+        if os.path.exists(thumb_path):
+            return True
+            
+        img = Image.open(image_path)
+        img.thumbnail((300, 300))
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+        
+        # Save as JPEG
+        img.save(thumb_path, "JPEG", quality=70)
+        return True
+    except Exception as e:
+        print(f"Error generating thumbnail for {image_path}: {e}")
+        return False
+
+def load_picture_metadata():
+    """Load metadata from pictures folder"""
+    global PICTURES_CACHE
+    print("Loading picture metadata...")
+    pictures = []
+    
+    if not os.path.exists(PICTURES_FOLDER):
+        os.makedirs(PICTURES_FOLDER)
+        PICTURES_cache = []
+        return
+
+    if not os.path.exists(THUMBNAILS_FOLDER):
+        os.makedirs(THUMBNAILS_FOLDER)
+
+    valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
+    files = [f for f in os.listdir(PICTURES_FOLDER) if f.lower().endswith(valid_extensions)]
+    
+    for filename in files:
+        filepath = os.path.join(PICTURES_FOLDER, filename)
+        thumb_filename = f"{os.path.splitext(filename)[0]}.jpg"
+        thumb_path = os.path.join(THUMBNAILS_FOLDER, thumb_filename)
+        
+        try:
+            # Generate thumbnail if needed
+            generate_thumbnail(filepath, thumb_path)
+            
+            # Get metadata
+            exif_data = get_exif_data(filepath)
+            file_stat = os.stat(filepath)
+            
+            picture = {
+                'filename': filename,
+                'thumbnail_url': f'/api/pictures/{filename}/thumbnail',
+                'url': f'/api/pictures/{filename}',
+                'title': exif_data['title'] or filename,
+                'caption': exif_data['caption'],
+                'width': exif_data['width'],
+                'height': exif_data['height'],
+                'date_taken': exif_data.get('date_taken', ''),
+                'created': datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+                'modified': datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+            }
+            pictures.append(picture)
+        except Exception as e:
+            print(f"Error processing picture {filename}: {e}")
+            
+    pictures.sort(key=lambda x: x['filename'])
+    PICTURES_CACHE = pictures
+    print(f"Loaded {len(pictures)} pictures.")
+
+def load_document_metadata():
+    """Load metadata from documents folder"""
+    global DOCUMENTS_CACHE
+    print("Loading document metadata...")
+    documents = []
+    
+    if not os.path.exists(DOCUMENTS_FOLDER):
+        os.makedirs(DOCUMENTS_FOLDER)
+        DOCUMENTS_CACHE = []
+        return
+        
+    for filename in os.listdir(DOCUMENTS_FOLDER):
+        if filename.startswith('.'): continue
+        
+        filepath = os.path.join(DOCUMENTS_FOLDER, filename)
+        if os.path.isdir(filepath): continue
+        
+        try:
+            file_stat = os.stat(filepath)
+            
+            doc = {
+                'filename': filename,
+                'url': f'/api/documents/{filename}',
+                'size': file_stat.st_size,
+                'created': datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+                'modified': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                'type': os.path.splitext(filename)[1].lower().replace('.', '')
+            }
+            documents.append(doc)
+        except Exception as e:
+            print(f"Error processing document {filename}: {e}")
+            
+    documents.sort(key=lambda x: x['filename'])
+    DOCUMENTS_CACHE = documents
+    print(f"Loaded {len(documents)} documents.")
 
 def load_metadata():
     """Load metadata from all MP3 files in the music folder"""
@@ -329,13 +655,71 @@ def stream_music(filename):
     """Stream MP3 file for playback"""
     return send_from_directory(MUSIC_FOLDER, filename, mimetype='audio/mpeg')
 
+@app.route('/api/pictures')
+def get_pictures():
+    """Return JSON array of picture files"""
+    with FILE_CHANGE_LOCK:
+        if not PICTURES_CACHE:
+            load_picture_metadata()
+        return jsonify(PICTURES_CACHE)
+
+@app.route('/api/pictures/<filename>')
+def get_picture(filename):
+    """Serve picture file"""
+    return send_from_directory(PICTURES_FOLDER, filename)
+
+@app.route('/api/pictures/<filename>/thumbnail')
+def get_thumbnail(filename):
+    """Serve thumbnail file"""
+    thumb_filename = f"{os.path.splitext(filename)[0]}.jpg"
+    
+    # Check if thumbnail exists
+    if not os.path.exists(os.path.join(THUMBNAILS_FOLDER, thumb_filename)):
+        # Try to generate it on demand
+        if os.path.exists(os.path.join(PICTURES_FOLDER, filename)):
+            generate_thumbnail(
+                os.path.join(PICTURES_FOLDER, filename),
+                os.path.join(THUMBNAILS_FOLDER, thumb_filename)
+            )
+            
+    return send_from_directory(THUMBNAILS_FOLDER, thumb_filename)
+
+@app.route('/api/documents')
+def get_documents():
+    """Return JSON array of document files"""
+    with FILE_CHANGE_LOCK:
+        if not DOCUMENTS_CACHE:
+            load_document_metadata()
+        return jsonify(DOCUMENTS_CACHE)
+
+@app.route('/api/documents/<filename>')
+def get_document(filename):
+    """Serve/download document file"""
+    return send_from_directory(DOCUMENTS_FOLDER, filename, as_attachment=True)
+
+@app.route('/api/config/folders')
+def get_folders_config():
+    """Return folder paths for discovery"""
+    return jsonify({
+        'music': MUSIC_FOLDER,
+        'pictures': PICTURES_FOLDER,
+        'documents': DOCUMENTS_FOLDER
+    })
+
 @app.route('/api/refresh', methods=['POST'])
 def refresh_metadata():
     """Manually trigger metadata reload"""
     print("Received request: POST /api/refresh")
     with FILE_CHANGE_LOCK:
         load_metadata()
-    return jsonify({'status': 'success', 'count': len(METADATA_CACHE)})
+        load_picture_metadata()
+        load_document_metadata()
+    return jsonify({
+        'status': 'success', 
+        'music_count': len(METADATA_CACHE),
+        'pictures_count': len(PICTURES_CACHE),
+        'documents_count': len(DOCUMENTS_CACHE)
+    })
 
 @app.route('/api/health')
 def health_check():
@@ -344,8 +728,8 @@ def health_check():
         'status': 'healthy',
         'files_count': len(METADATA_CACHE),
         'music_folder': MUSIC_FOLDER,
-        'mdns_enabled': ZEROCONF_AVAILABLE,
-        'service_name': SERVICE_NAME if ZEROCONF_AVAILABLE else None
+        'mdns_enabled': (ZEROCONF_INSTANCE is not None) or (AVAHI_PROCESS is not None),
+        'service_name': REGISTERED_SERVICE_NAME if (ZEROCONF_INSTANCE or AVAHI_PROCESS) else None
     })
 
 @app.route('/api/config')
@@ -355,7 +739,7 @@ def get_config():
         'music_folder': MUSIC_FOLDER,
         'server_url': f'http://localhost:{SERVICE_PORT}',
         'server_port': SERVICE_PORT,
-        'service_name': SERVICE_NAME
+        'service_name': REGISTERED_SERVICE_NAME
     })
 
 @app.route('/api/delete/<filename>', methods=['DELETE'])
@@ -1036,7 +1420,7 @@ def get_wifi_status():
 
 def register_mdns_service():
     """Register mDNS service for network discovery"""
-    global ZEROCONF_INSTANCE
+    global ZEROCONF_INSTANCE, REGISTERED_SERVICE_NAME, AVAHI_PROCESS
 
     if not ZEROCONF_AVAILABLE:
         print("mDNS not available (zeroconf not installed)")
@@ -1067,15 +1451,25 @@ def register_mdns_service():
     server_local_hostname = f"{hostname}.local."
     service_display_name = f"{SERVICE_NAME} (on {hostname})" # Display actual system hostname
 
-    try:
-        # Create service info
-        service_name = f"{SERVICE_NAME}.{SERVICE_TYPE}" # e.g., "cubie._http._tcp.local."
-        addresses = [socket.inet_aton(ip_address)]
+    if not ip_address or ip_address.startswith("127."):
+        # Bail out early with a clear message instead of letting zeroconf throw
+        print("⚠ Warning: Could not register mDNS service")
+        print("  Error: No usable IP address available for mDNS (got loopback/offline)")
+        print("  Troubleshooting:")
+        print("  - Connect to WiFi or Ethernet and restart the service")
+        print("  - Check network status: hostname -I")
+        print("  - Verify wlan0 is up: ip link show wlan0")
+        print(f"  You can still access the server at: http://{ip_address or 'localhost'}:{SERVICE_PORT}")
+        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
+        return None
 
-        info = ServiceInfo(
+    def build_service_info(name: str):
+        """Create a ServiceInfo object for the given name"""
+        service_name = f"{name}.{SERVICE_TYPE}" # e.g., "cubie._http._tcp.local."
+        return ServiceInfo(
             SERVICE_TYPE,
             service_name,
-            addresses=addresses,
+            addresses=[socket.inet_aton(ip_address)],
             port=SERVICE_PORT,
             properties={
                 'path': '/',
@@ -1084,13 +1478,40 @@ def register_mdns_service():
             server=server_local_hostname # This will be based on the system's hostname (e.g., "cubie.local" or "raspberrypi.local")
         )
 
-        # Register the service
-        zeroconf = Zeroconf()
-        zeroconf.register_service(info)
+    registered_service_name = SERVICE_NAME
+
+    try:
+        info = build_service_info(registered_service_name)
+
+        # Register the service (try preferred name first)
+        zeroconf = Zeroconf(
+            interfaces=InterfaceChoice.All,  # Advertise on all interfaces (IPv4 only)
+            ip_version=IPVersion.V4Only
+        )
+        try:
+            zeroconf.register_service(info)
+        except NonUniqueNameException:
+            # Clean up before retrying
+            zeroconf.close()
+
+            # Fallback: include hostname to avoid collisions
+            registered_service_name = f"{SERVICE_NAME}-{hostname}"
+            print("⚠ mDNS service name already in use on the network.")
+            print(f"  Trying fallback service name: {registered_service_name}")
+
+            info = build_service_info(registered_service_name)
+            zeroconf = Zeroconf(
+                interfaces=InterfaceChoice.All,
+                ip_version=IPVersion.V4Only
+            )
+            zeroconf.register_service(info)
 
         ZEROCONF_INSTANCE = zeroconf
+        REGISTERED_SERVICE_NAME = registered_service_name
 
-        print(f"✓ mDNS service '{SERVICE_NAME}' registered: http://{server_local_hostname}:{SERVICE_PORT}")
+        service_display_name = f"{registered_service_name} (on {hostname})"
+
+        print(f"✓ mDNS service '{registered_service_name}' registered: http://{server_local_hostname}:{SERVICE_PORT}")
         print(f"  - Service Display Name: {service_display_name}")
         print(f"  - Local IP: {ip_address}")
         print(f"  - System Hostname: {hostname}")
@@ -1099,9 +1520,9 @@ def register_mdns_service():
         print(f"    • http://{server_local_hostname}:{SERVICE_PORT}")
         print(f"    • http://{ip_address}:{SERVICE_PORT}")
 
-        if hostname.lower() != SERVICE_NAME.lower():
-            print(f"  - Note: If your system hostname ('{hostname}') differs from the preferred service name ('{SERVICE_NAME}'),")
-            print(f"          you may need to access it at http://{hostname}.local:{SERVICE_PORT} or change your system hostname to '{SERVICE_NAME}'.")
+        if hostname.lower() != registered_service_name.lower():
+            print(f"  - Note: If your system hostname ('{hostname}') differs from the registered service name ('{registered_service_name}'),")
+            print(f"          you may need to access it at http://{hostname}.local:{SERVICE_PORT} or change your system hostname.")
 
         # Verify the service is registered on the correct interface
         import subprocess
@@ -1112,32 +1533,69 @@ def register_mdns_service():
                 text=True,
                 timeout=5
             )
-            if 'cubie-server' in result.stdout:
-                print(f"  - mDNS service visible on network")
+            output = result.stdout.lower()
+            if registered_service_name.lower() in output or SERVICE_NAME.lower() in output:
+                print(f"  - mDNS service visible on network (via avahi-browse)")
             else:
-                print(f"  - Warning: Service not visible in avahi-browse")
+                print(f"  - Warning: Service not visible in avahi-browse output")
+                print(f"    (checked for '{registered_service_name}' / '{SERVICE_NAME}')")
         except:
             pass
 
         return zeroconf
     except Exception as e:
         import traceback
-        error_msg = str(e) if str(e) else "Unknown error"
+        error_msg = str(e) if str(e) else repr(e)
         print(f"⚠ Warning: Could not register mDNS service")
         print(f"  Error: {error_msg}")
-        print(f"  You can still access the server at: http://{ip_address}:5001")
-        print(f"  Or: http://{hostname}.local:5001")
+        print(f"  Error type: {type(e).__name__}")
+        print(f"  Context:")
+        print(f"    - Hostname: {hostname}")
+        print(f"    - IP address: {ip_address}")
+        print(f"    - Service name: {SERVICE_NAME}")
+        print(f"  Traceback (most recent call last):")
+        traceback.print_exc()
+        print(f"  You can still access the server at: http://{ip_address}:{SERVICE_PORT}")
+        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
         print(f"  ")
         print(f"  Troubleshooting:")
         print(f"  - Ensure network is ready before starting")
         print(f"  - Check if avahi-daemon is running: sudo systemctl status avahi-daemon")
         print(f"  - Verify network connectivity: ping 8.8.8.8")
         print(f"  - Try manual service registration with avahi-browse")
+        # Try avahi-publish-service fallback even if Zeroconf failed
+        avahi_bin = shutil.which("avahi-publish-service")
+        if avahi_bin:
+            try:
+                AVAHI_PROCESS = subprocess.Popen(
+                    [avahi_bin, registered_service_name, SERVICE_TYPE_SHORT, str(SERVICE_PORT), "/"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                REGISTERED_SERVICE_NAME = registered_service_name
+                print(f"  - Advertising via avahi-publish-service fallback ({registered_service_name}.{SERVICE_TYPE_SHORT})")
+            except Exception as avahi_err:
+                print(f"  - Failed to start avahi-publish-service fallback: {avahi_err}")
         return None
+
+    # Start avahi-publish-service as a backup broadcaster if available
+    avahi_bin = shutil.which("avahi-publish-service")
+    if avahi_bin:
+        try:
+            AVAHI_PROCESS = subprocess.Popen(
+                [avahi_bin, registered_service_name, SERVICE_TYPE_SHORT, str(SERVICE_PORT), "/"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print(f"  - Also advertising via avahi-publish-service ({registered_service_name}.{SERVICE_TYPE_SHORT})")
+        except Exception as e:
+            print(f"  - Failed to start avahi-publish-service fallback: {e}")
+
+    return ZEROCONF_INSTANCE
 
 def unregister_mdns_service():
     """Unregister mDNS service on shutdown"""
-    global ZEROCONF_INSTANCE
+    global ZEROCONF_INSTANCE, AVAHI_PROCESS
     if ZEROCONF_INSTANCE:
         try:
             ZEROCONF_INSTANCE.close()
@@ -1146,20 +1604,40 @@ def unregister_mdns_service():
             print(f"Error unregistering mDNS service: {e}")
         finally:
             ZEROCONF_INSTANCE = None
+    if AVAHI_PROCESS:
+        try:
+            AVAHI_PROCESS.terminate()
+            AVAHI_PROCESS.wait(timeout=2)
+            print("✓ avahi-publish-service stopped")
+        except Exception as e:
+            print(f"Error stopping avahi-publish-service: {e}")
+        finally:
+            AVAHI_PROCESS = None
 
 def start_file_monitor():
     """Start the file system monitor"""
     event_handler = MusicEventHandler()
     observer = Observer()
+    
+    # Ensure folders exist
+    for folder in [MUSIC_FOLDER, PICTURES_FOLDER, DOCUMENTS_FOLDER]:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+            
     observer.schedule(event_handler, MUSIC_FOLDER, recursive=False)
+    observer.schedule(event_handler, PICTURES_FOLDER, recursive=False)
+    observer.schedule(event_handler, DOCUMENTS_FOLDER, recursive=False)
+    
     observer.start()
-    print(f"Started file monitor on {MUSIC_FOLDER}")
+    print(f"Started file monitor on music, pictures, and documents")
     return observer
 
 if __name__ == '__main__':
     print("=" * 50)
     print("AIY Music Server - Pi Zero Music Server")
     print("=" * 50)
+
+    get_exif_data("pictures/image_1765229010_A_cute_robot_painter_in_a_futu.jpg")
 
     print(f"Music folder: {MUSIC_FOLDER}")
 

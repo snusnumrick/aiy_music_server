@@ -11,6 +11,12 @@ document.write(`
         .btn {
             @apply bg-primary hover:bg-primary/90 text-white font-bold py-2 px-4 sm:py-3 sm:px-5 md:py-3 md:px-6 rounded-xl transition-all transform hover:scale-105 active:scale-95 shadow-lg;
         }
+        .tab-btn {
+            @apply flex-1 py-2 px-4 rounded-lg font-bold text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-gray-700/50 transition-all text-center whitespace-nowrap;
+        }
+        .tab-btn.active {
+            @apply bg-white dark:bg-gray-700 text-primary dark:text-white shadow-sm;
+        }
         .btn-secondary {
             @apply bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 sm:py-3 sm:px-5 md:py-3 md:px-6 rounded-xl transition-all;
         }

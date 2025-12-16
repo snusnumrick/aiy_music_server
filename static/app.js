@@ -1,6 +1,11 @@
-let musicData = [];
 let currentTrackIndex = -1;
 let filteredTracks = [];
+let currentTab = 'music';
+let picturesData = [];
+let documentsData = [];
+let currentImageIndex = -1;
+let touchStartX = null;
+let touchStartY = null;
 let currentFontSize = 'medium';
 let deleteTrackIndex = null;
 
@@ -18,27 +23,81 @@ const elements = {
     deleteModal: document.getElementById('delete-modal'),
     deleteModalText: document.getElementById('delete-modal-text'),
     cancelDelete: document.getElementById('cancel-delete'),
-    confirmDelete: document.getElementById('confirm-delete')
+    confirmDelete: document.getElementById('confirm-delete'),
+    
+    // Views and Tabs
+    musicView: document.getElementById('music-view'),
+    picturesView: document.getElementById('pictures-view'),
+    documentsView: document.getElementById('documents-view'),
+    picturesGrid: document.getElementById('pictures-grid'),
+    documentsList: document.getElementById('documents-list'),
+    tabs: document.querySelectorAll('.tab-btn'),
+    
+    // Image Viewer
+    fullscreenImage: document.getElementById('fullscreen-image'),
+    fullscreenImgDisplay: document.getElementById('fullscreen-img-display'),
+    imageTitle: document.getElementById('image-title'),
+    imageCaption: document.getElementById('image-caption'),
+    imageMeta: document.getElementById('image-meta'),
+    imageCloseBtn: document.getElementById('image-close-btn'),
+    prevImageBtn: document.getElementById('prev-image-btn'),
+    nextImageBtn: document.getElementById('next-image-btn'),
+
+    // Document Viewer
+    documentViewer: document.getElementById('document-viewer'),
+    documentTitle: document.getElementById('document-title'),
+    documentMeta: document.getElementById('document-meta'),
+    documentContent: document.getElementById('document-content'),
+    documentCloseBtn: document.getElementById('document-close-btn')
 };
 
+
+async function fetchAllData() {
+    await Promise.all([fetchMusic(), fetchPictures(), fetchDocuments()]);
+    elements.status.textContent = 'Ready';
+    updateFileCount();
+}
+    
 async function fetchMusic() {
     try {
         const response = await fetch('/api/music');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        if (response.ok) {
+            musicData = await response.json();
+            filteredTracks = musicData;
+            if (currentTab === 'music') updateUI();
         }
-        musicData = await response.json();
-        filteredTracks = musicData;
-        updateUI();
-        elements.status.textContent = 'Ready';
-        elements.fileCount.textContent = `${musicData.length} file${musicData.length !== 1 ? 's' : ''}`;
-        elements.errorMessage.style.display = 'none';
     } catch (error) {
         console.error('Error fetching music:', error);
-        elements.status.textContent = 'Error';
-        elements.errorMessage.textContent = `Failed to load music: ${error.message}`;
-        elements.errorMessage.style.display = 'block';
     }
+}
+
+async function fetchPictures() {
+    try {
+        const response = await fetch('/api/pictures');
+        if (response.ok) {
+            picturesData = await response.json();
+            if (currentTab === 'pictures') updateUI();
+        }
+    } catch (error) {
+        console.error('Error fetching pictures:', error);
+    }
+}
+
+async function fetchDocuments() {
+    try {
+        const response = await fetch('/api/documents');
+        if (response.ok) {
+            documentsData = await response.json();
+            if (currentTab === 'documents') updateUI();
+        }
+    } catch (error) {
+        console.error('Error fetching documents:', error);
+    }
+}
+
+function updateFileCount() {
+    const total = musicData.length + picturesData.length + documentsData.length;
+    elements.fileCount.textContent = `${total} files`;
 }
 
 function updateUI() {
@@ -46,19 +105,13 @@ function updateUI() {
         elements.loading.style.display = 'none';
     }
 
-    const searchTerm = ""; //elements.searchInput.value.toLowerCase().trim();
-
-    if (searchTerm) {
-        filteredTracks = musicData.filter(track =>
-            track.title.toLowerCase().includes(searchTerm) ||
-            track.artist.toLowerCase().includes(searchTerm) ||
-            track.filename.toLowerCase().includes(searchTerm)
-        );
-    } else {
-        filteredTracks = musicData;
+    if (currentTab === 'music') {
+        renderTrackList();
+    } else if (currentTab === 'pictures') {
+        renderPicturesGrid();
+    } else if (currentTab === 'documents') {
+        renderDocumentsList();
     }
-
-    renderTrackList();
 }
 
 function renderTrackList() {
@@ -104,6 +157,313 @@ function renderTrackList() {
     // Initialize Lucide icons for the new elements
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
+    }
+}
+
+function renderPicturesGrid() {
+    if (picturesData.length === 0) {
+        elements.picturesGrid.innerHTML = `
+            <div class="col-span-full py-10 text-center text-gray-500 text-lg">
+                No pictures found
+            </div>
+        `;
+        return;
+    }
+
+    elements.picturesGrid.innerHTML = picturesData.map((pic, index) => `
+        <div class="bg-white/90 dark:bg-gray-800/90 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer aspect-square relative group" onclick="showFullscreenImage(${index})">
+            <img src="${pic.thumbnail_url}" alt="${escapeHtml(pic.title)}" loading="lazy" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110">
+            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end h-1/2">
+                <div class="text-white text-sm font-semibold truncate">${escapeHtml(pic.title)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderDocumentsList() {
+    if (documentsData.length === 0) {
+        elements.documentsList.innerHTML = `
+            <div class="py-10 text-center text-gray-500 text-lg">
+                No documents found
+            </div>
+        `;
+        return;
+    }
+
+    elements.documentsList.innerHTML = documentsData.map((doc, index) => `
+        <a href="${doc.url}" data-doc-index="${index}" class="block bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
+            <div class="flex items-center gap-3">
+                <div class="bg-primary/10 p-3 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                    <i data-lucide="file-text" class="w-6 h-6"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-gray-800 dark:text-gray-200 truncate">${escapeHtml(doc.filename)}</div>
+                    <div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <span>${formatFileSize(doc.size)}</span>
+                        <span>${formatDate(doc.modified)}</span>
+                    </div>
+                </div>
+                <div class="text-gray-400">
+                    <i data-lucide="${doc.type === 'md' ? 'maximize-2' : 'download'}" class="w-5 h-5"></i>
+                </div>
+            </div>
+        </a>
+    `).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function openDocument(index) {
+    if (index < 0 || index >= documentsData.length) return;
+    const doc = documentsData[index];
+
+    // Only intercept markdown; other types open in a new tab
+    if (doc.type !== 'md') {
+        window.open(doc.url, '_blank');
+        return;
+    }
+
+    try {
+        elements.status.textContent = 'Opening document...';
+        const response = await fetch(doc.url);
+        if (!response.ok) throw new Error(`Failed to load ${doc.filename}`);
+        const text = await response.text();
+        const html = markdownToHtml(text);
+        showDocumentViewer(doc, html);
+        elements.status.textContent = 'Ready';
+    } catch (error) {
+        console.error('Error opening document:', error);
+        showError('Could not open document; downloaded instead.');
+        window.open(doc.url, '_blank');
+    }
+}
+
+function showDocumentViewer(doc, html) {
+    elements.documentTitle.textContent = doc.filename;
+    elements.documentMeta.textContent = `${formatFileSize(doc.size)} • ${formatDate(doc.modified)}`;
+    elements.documentContent.innerHTML = html;
+    elements.documentViewer.classList.remove('hidden');
+    elements.documentViewer.style.display = 'flex';
+}
+
+function hideDocumentViewer() {
+    elements.documentViewer.classList.add('hidden');
+    elements.documentViewer.style.display = 'none';
+    elements.documentContent.innerHTML = '';
+}
+
+function markdownToHtml(markdown) {
+    const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+    let html = '';
+    let inList = false;
+    let listTag = '';
+    let inCode = false;
+    for (let idx = 0; idx < lines.length; idx++) {
+        const line = lines[idx];
+
+        if (line.trim().startsWith('```')) {
+            if (!inCode) {
+                inCode = true;
+                html += '<pre><code>';
+            } else {
+                inCode = false;
+                html += '</code></pre>';
+            }
+            return;
+        }
+
+        if (inCode) {
+            html += `${escapeHtml(line)}\n`;
+            continue;
+        }
+
+        // Tables: header | header2
+        const nextLine = lines[idx + 1] || '';
+        const isTableHeader = line.includes('|') && /^\s*\|?(.+\|)+.+\|?\s*$/.test(line);
+        const isSeparator = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(nextLine);
+        if (isTableHeader && isSeparator) {
+            if (inList) {
+                html += listTag === 'ol' ? '</ol>' : '</ul>';
+                inList = false;
+                listTag = '';
+            }
+            const headers = line.split('|').map((cell) => inlineMarkdown(cell.trim())).filter(Boolean);
+            const rows = [];
+            idx += 1; // skip separator line
+            while (idx + 1 < lines.length) {
+                const rowLine = lines[idx + 1];
+                if (!rowLine.includes('|')) break;
+                rows.push(rowLine.split('|').map((cell) => inlineMarkdown(cell.trim())).filter(Boolean));
+                idx += 1;
+            }
+            html += '<table class="doc-table"><thead><tr>';
+            headers.forEach((h) => html += `<th>${h}</th>`);
+            html += '</tr></thead><tbody>';
+            rows.forEach((row) => {
+                html += '<tr>';
+                row.forEach((cell) => html += `<td>${cell}</td>`);
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            continue;
+        }
+
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+            const level = headingMatch[1].length;
+            html += `<h${level}>${inlineMarkdown(headingMatch[2])}</h${level}>`;
+            continue;
+        }
+
+        const listMatch = line.match(/^[-*]\s+(.*)$/);
+        const orderedMatch = line.match(/^\d+\.\s+(.*)$/);
+        if (listMatch || orderedMatch) {
+            const targetTag = orderedMatch ? 'ol' : 'ul';
+            if (!inList || listTag !== targetTag) {
+                if (inList) {
+                    html += listTag === 'ol' ? '</ol>' : '</ul>';
+                }
+                html += targetTag === 'ol' ? '<ol>' : '<ul>';
+                inList = true;
+                listTag = targetTag;
+            }
+            const content = orderedMatch ? orderedMatch[1] : listMatch[1];
+            html += `<li>${inlineMarkdown(content)}</li>`;
+            continue;
+        }
+
+        if (inList) {
+            html += listTag === 'ol' ? '</ol>' : '</ul>';
+            inList = false;
+            listTag = '';
+        }
+
+        const blockquoteMatch = line.match(/^>\s?(.*)$/);
+        if (blockquoteMatch) {
+            html += `<blockquote>${inlineMarkdown(blockquoteMatch[1])}</blockquote>`;
+            continue;
+        }
+
+        if (/^(-{3,}|_{3,}|\*{3,})$/.test(line.trim())) {
+            html += '<hr>';
+            continue;
+        }
+
+        if (line.trim() === '') {
+            html += '';
+            continue;
+        }
+
+        html += `<p>${inlineMarkdown(line)}</p>`;
+    }
+
+    if (inList) html += '</ul>';
+    if (inCode) html += '</code></pre>';
+    return html || '<p>No content</p>';
+}
+
+function inlineMarkdown(text) {
+    let escaped = escapeHtml(text);
+    escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    escaped = escaped.replace(/!\[(.*?)\]\((.+?)\)/g, '<img src="$2" alt="$1" loading="lazy">');
+    escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    escaped = escaped.replace(/(\bhttps?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    return escaped;
+}
+
+// Image Viewer Logic
+function showFullscreenImage(index) {
+    if (index < 0 || index >= picturesData.length) return;
+    
+    currentImageIndex = index;
+    const pic = picturesData[index];
+    
+    elements.fullscreenImgDisplay.src = pic.url;
+    elements.imageTitle.textContent = pic.title;
+    elements.imageCaption.textContent = pic.caption || '';
+    
+    // Meta info - parse various date formats
+    let dateStr = 'Unknown date';
+    if (pic.date_taken) {
+        try {
+            const dt = pic.date_taken;
+            let d;
+            
+            // IPTC format: "20241215" (YYYYMMDD)
+            if (/^\d{8}$/.test(dt)) {
+                d = new Date(dt.slice(0,4) + '-' + dt.slice(4,6) + '-' + dt.slice(6,8));
+            }
+            // EXIF format: "2024:01:15 14:30:00"
+            else if (dt.includes(':')) {
+                const normalized = dt.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').replace(' ', 'T');
+                d = new Date(normalized);
+            }
+            // ISO format or other
+            else {
+                d = new Date(dt);
+            }
+            
+            if (d && !isNaN(d.getTime())) {
+                dateStr = d.toLocaleDateString();
+            }
+        } catch (e) {}
+    }
+    elements.imageMeta.textContent = `${pic.width}x${pic.height} • ${dateStr}`;
+
+
+    
+    elements.fullscreenImage.classList.remove('hidden');
+    elements.fullscreenImage.style.display = 'flex';
+    
+    // Button states
+    elements.prevImageBtn.style.opacity = index === 0 ? '0.3' : '1';
+    elements.nextImageBtn.style.opacity = index === picturesData.length - 1 ? '0.3' : '1';
+}
+
+function closeFullscreenImage() {
+    elements.fullscreenImage.classList.add('hidden');
+    elements.fullscreenImage.style.display = 'none';
+}
+
+function nextImage() {
+    if (currentImageIndex < picturesData.length - 1) {
+        showFullscreenImage(currentImageIndex + 1);
+    }
+}
+
+function prevImage() {
+    if (currentImageIndex > 0) {
+        showFullscreenImage(currentImageIndex - 1);
+    }
+}
+
+function resetImageTouchTracking() {
+    touchStartX = null;
+    touchStartY = null;
+}
+
+function handleImageTouchStart(event) {
+    if (event.touches.length !== 1) return;
+    touchStartX = event.touches[0].clientX;
+    touchStartY = event.touches[0].clientY;
+}
+
+function handleImageTouchEnd(event) {
+    if (touchStartX === null || touchStartY === null) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    resetImageTouchTracking();
+
+    // Ignore mostly vertical gestures and small taps
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+
+    if (deltaX < 0) {
+        nextImage();
+    } else {
+        prevImage();
     }
 }
 
@@ -248,12 +608,20 @@ function showError(message) {
     }, 5000);
 }
 
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 async function refreshMetadata() {
     try {
         elements.status.textContent = 'Refreshing...';
         const response = await fetch('/api/refresh', { method: 'POST' });
         if (response.ok) {
-            await fetchMusic();
+            await fetchAllData();
             elements.status.textContent = 'Updated';
         } else {
             throw new Error('Refresh failed');
@@ -299,6 +667,14 @@ elements.deleteModal.addEventListener('click', (e) => {
     }
 });
 
+elements.documentsList.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-doc-index]');
+    if (!target) return;
+    e.preventDefault();
+    const index = Number(target.dataset.docIndex);
+    openDocument(index);
+});
+
 document.getElementById('fullscreen-close-btn').addEventListener('click', hideFullscreenLyrics);
 document.getElementById('exit-fullscreen-btn').addEventListener('click', hideFullscreenLyrics);
 document.getElementById('fullscreen-font-smaller').addEventListener('click', () => {
@@ -324,6 +700,13 @@ document.getElementById('fullscreen-lyrics').addEventListener('click', (e) => {
     }
 });
 
+elements.documentCloseBtn?.addEventListener('click', hideDocumentViewer);
+elements.documentViewer?.addEventListener('click', (e) => {
+    if (e.target.id === 'document-viewer') {
+        hideDocumentViewer();
+    }
+});
+
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         if (!elements.deleteModal.classList.contains('hidden')) {
@@ -333,7 +716,55 @@ document.addEventListener('keydown', (e) => {
         } else if (document.getElementById('fullscreen-lyrics').style.display === 'flex' ||
                    !document.getElementById('fullscreen-lyrics').classList.contains('hidden')) {
             hideFullscreenLyrics();
+        } else if (elements.documentViewer && elements.documentViewer.style.display === 'flex') {
+            hideDocumentViewer();
         }
+    }
+});
+
+// Tab Switching
+elements.tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        const targetTab = tab.dataset.tab;
+        if (currentTab === targetTab) return;
+        
+        // Update state
+        currentTab = targetTab;
+        
+        // Update tab buttons
+        elements.tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update views
+        elements.musicView.classList.add('hidden');
+        elements.picturesView.classList.add('hidden');
+        elements.documentsView.classList.add('hidden');
+        
+        if (currentTab === 'music') elements.musicView.classList.remove('hidden');
+        if (currentTab === 'pictures') elements.picturesView.classList.remove('hidden');
+        if (currentTab === 'documents') elements.documentsView.classList.remove('hidden');
+        
+        updateUI();
+    });
+});
+
+// Image Viewer Events
+elements.imageCloseBtn?.addEventListener('click', closeFullscreenImage);
+elements.prevImageBtn?.addEventListener('click', (e) => { e.stopPropagation(); prevImage(); });
+elements.nextImageBtn?.addEventListener('click', (e) => { e.stopPropagation(); nextImage(); });
+elements.fullscreenImage?.addEventListener('touchstart', handleImageTouchStart, { passive: true });
+elements.fullscreenImage?.addEventListener('touchend', handleImageTouchEnd);
+elements.fullscreenImage?.addEventListener('touchcancel', resetImageTouchTracking);
+
+// Keyboard nav
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeFullscreenImage();
+        // ... existing escape logic ...
+    }
+    if (!elements.fullscreenImage.classList.contains('hidden')) {
+        if (e.key === 'ArrowLeft') prevImage();
+        if (e.key === 'ArrowRight') nextImage();
     }
 });
 
@@ -343,5 +774,5 @@ document.addEventListener('DOMContentLoaded', async () => {
         lucide.createIcons();
     }
 
-    fetchMusic();
+    fetchAllData();
 });
