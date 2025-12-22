@@ -101,6 +101,52 @@ if SERVICE_PORT != PREFERRED_SERVICE_PORT:
 else:
     print(f"Using port {SERVICE_PORT}")
 
+# Write port to file for captive portal configuration
+try:
+    with open('/tmp/music_server_port.txt', 'w') as f:
+        f.write(str(SERVICE_PORT))
+    print(f"Wrote port to /tmp/music_server_port.txt for captive portal")
+except Exception as e:
+    print(f"Warning: Could not write port file: {e}")
+
+# Configure iptables for captive portal (if setup was chosen)
+def configure_iptables_captive_portal():
+    """Configure iptables redirect for captive portal"""
+    try:
+        # Check if we should configure captive portal
+        # We check if iptables rule exists for port 80 redirect
+        import subprocess
+        result = subprocess.run(
+            ['iptables', '-t', 'nat', '-L', 'PREROUTING', '-n'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+
+        if 'REDIRECT' in result.stdout and 'dpt:80' in result.stdout:
+            # Rule exists, update it with correct port
+            # Remove old rule
+            subprocess.run(
+                ['sudo', 'iptables', '-t', 'nat', '-D', 'PREROUTING', '-i', 'wlan0',
+                 '-p', 'tcp', '--dport', '80', '-j', 'REDIRECT', '--to-port', '5000'],
+                stderr=subprocess.DEVNULL,
+                timeout=2
+            )
+            # Add new rule with actual port
+            subprocess.run(
+                ['sudo', 'iptables', '-t', 'nat', '-A', 'PREROUTING', '-i', 'wlan0',
+                 '-p', 'tcp', '--dport', '80', '-j', 'REDIRECT', '--to-port', str(SERVICE_PORT)],
+                check=False,
+                timeout=2
+            )
+            print(f"✓ Configured captive portal: redirecting port 80 -> {SERVICE_PORT}")
+    except Exception as e:
+        # Silent fail - iptables might need sudo or not be available
+        pass
+
+# Try to configure iptables (may fail without sudo, that's OK)
+configure_iptables_captive_portal()
+
 REGISTERED_SERVICE_NAME = SERVICE_NAME
 AVAHI_PROCESS = None
 
@@ -785,11 +831,18 @@ def health_check():
 @app.route('/api/config')
 def get_config():
     """Return configuration for voice assistant and other services"""
+    local_ip = get_local_ip()
+    hostname = socket.gethostname()
     return jsonify({
         'music_folder': MUSIC_FOLDER,
         'server_url': f'http://localhost:{SERVICE_PORT}',
         'server_port': SERVICE_PORT,
-        'service_name': REGISTERED_SERVICE_NAME
+        'service_name': REGISTERED_SERVICE_NAME,
+        'hostname': hostname,
+        'local_url': f'http://{hostname}.local:{SERVICE_PORT}',
+        'bare_hostname': hostname,
+        'ip_address': local_ip,
+        'android_accessible': True
     })
 
 @app.route('/api/delete/<filename>', methods=['DELETE'])
@@ -1765,10 +1818,12 @@ if __name__ == '__main__':
     try:
         print(f"\nStarting server on http://0.0.0.0:{SERVICE_PORT}")
         if zeroconf_instance:
-            print(f"✓ mDNS enabled: Access via http://cubie.local:{SERVICE_PORT}")
+            print(f"✓ mDNS enabled")
+            print(f"  📱 Android users: Visit http://cubie:{SERVICE_PORT} (Android auto-appends .local)")
+            print(f"  🖥️  Mac/Desktop: Visit http://cubie.local:{SERVICE_PORT}")
         else:
             print("⚠ mDNS disabled: Using IP address instead")
-        print("Press Ctrl+C to stop")
+        print("\nPress Ctrl+C to stop")
         print("=" * 50)
         app.run(host='0.0.0.0', port=SERVICE_PORT, debug=False)
     except KeyboardInterrupt:

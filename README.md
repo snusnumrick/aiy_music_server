@@ -71,19 +71,36 @@ The server will start and register an mDNS service for automatic network discove
 
 ### 5. Access from Your Phone
 
-**Easiest Way (mDNS - Recommended):**
+**📱 Android (Easiest):**
 ```
-http://cubie.local:5001
+http://cubie:5000
+```
+Android automatically appends `.local`, so this becomes `http://cubie.local:5000`
+
+**🖥️ Desktop/Mac:**
+```
+http://cubie.local:5000
 ```
 
-Or find your Pi's IP address:
+**Or use IP address:**
 ```bash
 hostname -I
 ```
+Then open: `http://192.168.x.x:5000`
 
-And open: `http://192.168.x.x:5001`
+**Port Note:** The server auto-detects available ports starting from 5000. If 5000 is in use, it will use 5001, 5002, etc. Check the startup message for the actual port.
 
-**Note:** The default port is 5001. The mDNS service name is "cubie.local" and will be discoverable on your local network.
+### Android-Specific Setup
+
+For best Android compatibility, run the mDNS setup script once:
+
+```bash
+sudo ./setup_android_mdns.sh
+```
+
+This configures avahi-daemon for Android's mDNS implementation and registers additional service types (workstation, etc.) that Android can discover.
+
+For detailed Android access instructions, see: **`ANDROID_ACCESS.md`**
 
 ## Directory Structure
 
@@ -164,10 +181,14 @@ Simply copy MP3 files into the `music/` directory. The server will:
    python app.py
    ```
 
-4. **Access from your phone:**
+4. **Optional: Setup Android mDNS (for better Android compatibility):**
+   ```bash
+   sudo ./setup_android_mdns.sh
    ```
-   http://cubie.local:5001
-   ```
+
+5. **Access from your phone:**
+   - **Android:** `http://cubie:5000`
+   - **Desktop/Mac:** `http://cubie.local:5000`
 
 **That's it!** The service will be discoverable as "cubie.local" on your network.
 
@@ -265,25 +286,31 @@ POLLING_INTERVAL = 3000  # Client refresh rate (milliseconds)
 
 ### Port Configuration
 
-**Default port: 5001**
+**Auto-detection:** The server automatically finds an available port starting from 5000.
 
-The server defaults to port 5001 (not 5000) to avoid conflicts with macOS AirPlay Receiver.
+To specify a preferred port:
 
-To change the port, edit the `app.run()` call at the bottom of `app.py`:
-
-```python
-app.run(host='0.0.0.0', port=5001, debug=False)
+```bash
+SERVICE_PORT=8080 python app.py
 ```
 
-Change `port=5001` to your desired port (e.g., `port=8080`).
+Or edit the port in `app.py`:
+
+```python
+# Preferred port (will auto-detect if in use)
+PREFERRED_SERVICE_PORT = 5000
+SERVICE_PORT = find_available_port(PREFERRED_SERVICE_PORT)
+```
+
+The actual port used will be displayed on server startup.
 
 ## Troubleshooting
 
 ### Server won't start
 
 ```bash
-# Check if port is in use (default port is 5001)
-sudo netstat -tlnp | grep :5001
+# Check if port is in use (server auto-detects, try 5000-5010)
+sudo netstat -tlnp | grep -E ':(5000|5001|5002)'
 
 # Check Python version (need 3.6+)
 python3 --version
@@ -295,16 +322,17 @@ which python  # Should be in music_server/bin/
 ffmpeg -version
 ```
 
-### Port 5000 in use
+### Port already in use
 
-The server runs on port **5001** by default. If you see "Address already in use" for port 5001:
+The server auto-detects available ports starting from 5000. If you see "Address already in use":
 
 ```bash
-# Find and kill the process using port 5001
-lsof -ti:5001 | xargs kill -9
-```
+# The server will automatically try the next port
+# Check the startup message to see which port was selected
 
-Or edit `app.py` and change `port=5001` to a different port.
+# Or specify a preferred port:
+SERVICE_PORT=8080 python app.py
+```
 
 ### Music files not detected
 
@@ -340,8 +368,8 @@ This issue was fixed in v1.1. The server now properly reads USLT tags from MP3 f
 
 ```bash
 # Verify server is listening on all interfaces
-netstat -tlnp | grep :5001
-# Should show 0.0.0.0:5001, not 127.0.0.1:5001
+netstat -tlnp | grep -E ':(5000|5001|5002)'
+# Should show 0.0.0.0:XXXX, not 127.0.0.1:XXXX
 
 # Check firewall
 sudo ufw status
@@ -352,7 +380,7 @@ sudo ufw status
 **Verify mDNS is enabled:**
 ```bash
 # Check the API health endpoint
-curl http://localhost:5001/api/health | jq
+curl http://localhost:5000/api/health | jq
 
 # Should show: {"mdns_enabled": true, "service_name": "Cubie", ...}
 ```
@@ -368,23 +396,35 @@ dns-sd -B _http._tcp
 # On Windows (install Bonjour SDK):
 ```
 
+**Android-specific troubleshooting:**
+```bash
+# Run the Android mDNS setup script
+sudo ./setup_android_mdns.sh
+
+# On Android, try both methods:
+# 1. http://cubie:5000 (Android auto-appends .local)
+# 2. http://cubie.local:5000 (explicit)
+```
+
 **Manual connection:**
 If mDNS doesn't work on your network, use the IP address:
 ```bash
 # Get Pi's IP
 hostname -I
-# Then visit: http://192.168.x.x:5001
+# Then visit: http://192.168.x.x:5000
 ```
 
 **Comprehensive Troubleshooting:**
 For detailed mDNS troubleshooting steps, see:
 - `MDNS_TROUBLESHOOTING.md` - Complete guide to mDNS issues on Raspberry Pi
+- `ANDROID_ACCESS.md` - Android-specific access guide
 
 Common fixes:
-1. Ensure avahi-daemon is running: `sudo systemctl status avahi-daemon`
-2. Install zeroconf: `pip install zeroconf==0.148.0`
-3. Check network connectivity: `ping 8.8.8.8`
-4. Verify firewall settings
+1. Run Android mDNS setup: `sudo ./setup_android_mdns.sh`
+2. Ensure avahi-daemon is running: `sudo systemctl status avahi-daemon`
+3. Install zeroconf: `pip install --upgrade zeroconf`
+4. Check network connectivity: `ping 8.8.8.8`
+5. Verify firewall settings
 
 ### Slow file detection
 
@@ -500,7 +540,7 @@ This creates 8 test files with various metadata scenarios.
 ### Manual Testing
 
 ```bash
-# Test API
+# Test API (use the port shown in startup message)
 curl http://localhost:5000/api/music | jq
 
 # Test file serving

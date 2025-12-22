@@ -19,14 +19,22 @@ sudo apt-get install -y avahi-daemon avahi-utils
 echo "3. Enabling avahi-daemon..."
 sudo systemctl enable avahi-daemon
 sudo systemctl start avahi-daemon
+echo -e "\nAvahi-daemon status:"
 sudo systemctl status avahi-daemon --no-pager -l
 
 # Install Python zeroconf if not already installed
-echo "4. Installing/updating Python zeroconf..."
+echo "\n4. Installing/updating Python zeroconf..."
 pip install --upgrade zeroconf
 
 # Configure avahi for better compatibility
-echo "5. Configuring avahi-daemon..."
+echo "\n5. Configuring avahi-daemon for Android..."
+# Backup original config
+if [ ! -f /etc/avahi/avahi-daemon.conf.bak ]; then
+    sudo cp /etc/avahi/avahi-daemon.conf /etc/avahi/avahi-daemon.conf.bak
+    echo "  ✓ Backed up original config to /etc/avahi/avahi-daemon.conf.bak"
+fi
+
+# Create optimized config for Android
 sudo tee /etc/avahi/avahi-daemon.conf > /dev/null <<'EOF'
 [server]
 use-ipv4=yes
@@ -35,6 +43,7 @@ enable-wide-area=yes
 enable-reflector=no
 check-response-ttl=no
 use-iff-running=no
+allow-interfaces=wlan0,eth0
 
 [publish]
 publish-addresses=yes
@@ -42,6 +51,8 @@ publish-hinfo=yes
 publish-workstation=yes
 publish-domain=yes
 add-service-cookie=yes
+disable-publishing=no
+disable-user-service-publishing=no
 
 [reflector]
 enable-reflector=no
@@ -54,27 +65,44 @@ enable-wide-area=yes
 EOF
 
 # Restart avahi-daemon with new config
-echo "6. Restarting avahi-daemon with new config..."
+echo "\n6. Restarting avahi-daemon with Android-optimized config..."
 sudo systemctl restart avahi-daemon
+sleep 2
+
+# Check if hostname is set correctly
+HOSTNAME=$(hostname)
+echo "\n7. Checking hostname configuration..."
+echo "  Current hostname: $HOSTNAME"
+echo "  Local domain: ${HOSTNAME}.local"
+
+if [ "$HOSTNAME" = "cubie" ]; then
+    echo "  ✓ Hostname is set to 'cubie' - perfect for Android!"
+else
+    echo "  ⚠ Hostname is '$HOSTNAME'. For Android, use:"
+    echo "     http://${HOSTNAME}.local:5000"
+fi
 
 echo ""
 echo "============================================"
-echo "✓ mDNS setup complete!"
+echo -e "${GREEN}✓ mDNS setup complete!${NC}"
 echo "============================================"
 echo ""
-echo "Next steps:"
-echo "1. Start your music server:"
-echo "   python app.py"
+echo "How to Access from Android:"
+echo "  1. Ensure phone and Pi are on same WiFi"
+echo "  2. On Android, type in browser:"
+echo "     ${GREEN}http://cubie:5000${NC}"
+echo "     (Android auto-appends .local)"
 echo ""
-echo "2. On your Android phone:"
-echo "   - Open browser"
-echo "   - Try: http://cubie.local:5000"
-echo "   - If that doesn't work, use the IP address shown on the Pi"
+echo "  3. Alternative:"
+echo "     http://cubie.local:5000"
 echo ""
-echo "3. To check mDNS is working on Pi:"
-echo "   avahi-browse -a -t"
+echo "Verification:"
+echo "  - Check services: ${YELLOW}avahi-browse -a -t${NC}"
+echo "  - Look for: cubie._http._tcp.local"
+echo "               cubie._workstation._tcp.local"
 echo ""
-echo "4. For Android troubleshooting:"
-echo "   - Install 'Network Analyzer' app to find the Pi"
-echo "   - Or check your router's admin page for device list"
+echo "If Android can't find it:"
+echo "  - Wait 30 seconds for mDNS propagation"
+echo "  - Use IP: http://$(hostname -I | awk '{print $1}'):5000"
+echo "  - Install 'Network Analyzer' app on Android"
 echo ""

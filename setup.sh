@@ -158,100 +158,55 @@ EOF
     echo "View logs with: sudo journalctl -u ${SERVICE_NAME} -f"
 fi
 
+# Android mDNS Setup
+echo ""
+read -p "Setup mDNS for Android compatibility? (recommended for phones) (y/n) " -r
+echo ""
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Running Android mDNS setup..."
+    if [ -f "./setup_android_mdns.sh" ]; then
+        sudo bash ./setup_android_mdns.sh
+        echo ""
+        echo -e "${GREEN}✓ Android mDNS setup complete${NC}"
+    else
+        echo -e "${RED}Error: setup_android_mdns.sh not found${NC}"
+    fi
+fi
+
 # Captive Portal Setup
 echo ""
-read -p "Enable Captive Portal (Hotspot auto-redirect)? (y/n) " -r
+read -p "Enable Captive Portal (redirects port 80 to music server)? (y/n) " -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Setting up Captive Portal..."
-    
-    # 1. Enable IP Forwarding
+    echo ""
+
+    # Install dependencies
+    if ! dpkg -s iptables-persistent >/dev/null 2>&1; then
+        echo "Installing iptables-persistent..."
+        apt-get update && apt-get install -y iptables-persistent
+    fi
+
+    # Enable IP forwarding
     echo "Enabling IP forwarding..."
     echo 1 > /proc/sys/net/ipv4/ip_forward
     sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
-    
-    # 2. Install iptables-persistent if needed
-    if ! dpkg -s iptables-persistent >/dev/null 2>&1; then
-        echo "Installing iptables-persistent..."
-        # Use DEBIAN_FRONTEND=noninteractive to avoid prompts, or let it prompt?
-        # Letting it prompt is safer so user sees what's happening
-        apt-get update && apt-get install -y iptables-persistent
-    fi
-    
-    # 3. Add IPTables Rule (Port 80 -> 5001)
-    echo "Adding iptables redirect rule..."
-    # Target wlan0 interface
-    iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5001
-    
-    # 4. Persist Rules
+
+    # Add initial redirect rule (will be updated after server starts)
+    echo "Adding initial iptables redirect rule..."
+    iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5000 2>/dev/null || true
+
+    # Save rules
     echo "Saving iptables rules..."
     iptables-save > /etc/iptables/rules.v4
-    
-    # 5. Install and Configure dnsmasq for DNS Sinkhole
-    if ! command -v dnsmasq &> /dev/null; then
-        echo "Installing dnsmasq..."
-        apt-get update && apt-get install -y dnsmasq
-    fi
 
-    echo "Configuring dnsmasq address..."
-    # Back up original config
-    if [ ! -f /etc/dnsmasq.conf.bak ]; then
-        cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak
-    fi
-
-    # Create a dedicated config for the sinkhole
-    # We use address=/#/192.168.50.5 to resolve EVERYTHING to the Pi's IP
-    # Note: We need to dynamically determine the wlan0 IP to be safe, or assume the hotspot static IP
-    
-    # Try to get wlan0 IP
-    WLAN_IP=$(ip -4 addr show wlan0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
-    
-    if [ -z "$WLAN_IP" ]; then
-        echo -e "${YELLOW}Warning: Could not detect wlan0 IP. Assuming 192.168.50.5 (default hotspot)${NC}"
-        WLAN_IP="192.168.50.5"
-    else
-        echo "Detected wlan0 IP: $WLAN_IP"
-    fi
-
-    cat << EOF > /etc/dnsmasq.d/captive_portal.conf
-# AIY Music Server Captive Portal
-# Resolve all domains to the Pi's IP address
-address=/#/$WLAN_IP
-interface=wlan0
-# bind-interfaces removed to avoid conflict with system default bind-dynamic
-EOF
-
-    echo "Restarting dnsmasq..."
-    if ! systemctl restart dnsmasq; then
-        echo -e "${YELLOW}⚠ dnsmasq failed to start. Checking for port 53 conflict...${NC}"
-        
-        # Check if systemd-resolved is using port 53
-        if lsof -i :53 | grep -q "systemd-r"; then
-            echo "Fixing conflict with systemd-resolved..."
-            # Disable stub listener in systemd-resolved
-            if [ -f /etc/systemd/resolved.conf ]; then
-                sed -i 's/#DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf
-                sed -i 's/DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf
-                systemctl restart systemd-resolved
-            fi
-            
-            # Retry dnsmasq
-            echo "Retrying dnsmasq start..."
-            systemctl restart dnsmasq
-        fi
-        
-        # Check again if it failed
-        if ! systemctl is-active --quiet dnsmasq; then
-             echo -e "${RED}Error: dnsmasq failed to start.${NC}"
-             echo "--- dnsmasq logs ---"
-             journalctl -u dnsmasq -n 20 --no-pager
-             echo "--------------------"
-        fi
-    fi
-    
-    if systemctl is-active --quiet dnsmasq; then
-        echo -e "${GREEN}✓${NC} Captive Portal enabled (DNS Sinkhole + Port Redirect)"
-    fi
+    echo ""
+    echo "✓ Captive Portal configured"
+    echo ""
+    echo "The server will automatically update the redirect when it starts."
+    echo "Users connecting to this Pi's WiFi will be redirected from port 80"
+    echo "to the actual server port (auto-detected, usually 5000)."
+    echo ""
 fi
 
 echo ""
@@ -259,5 +214,9 @@ echo "=================================================="
 echo -e "${GREEN}  Setup Complete!${NC}"
 echo "=================================================="
 echo ""
-echo "  Access from your phone: http://${SERVICE_NAME}.local:5001"
+echo "  📱 Android: http://cubie:5000"
+echo "  🖥️  Desktop: http://cubie.local:5000"
+echo "  🌐 Captive Portal: http://<wifi-ip> (if enabled)"
+echo ""
+echo "  Server auto-detects port, starting from 5000"
 echo "=================================================="
