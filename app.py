@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory, request
+from flask import Flask, jsonify, send_from_directory, request, make_response
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3NoHeaderError
 import os
@@ -648,12 +648,38 @@ def get_music():
     print("Acquiring lock to read metadata...")
     with FILE_CHANGE_LOCK:
         print(f"Returning {len(METADATA_CACHE)} tracks.")
-        return jsonify(METADATA_CACHE)
+        # Pagination support
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+
+        if page <= 0 or per_page <= 0:
+            return jsonify({'error': 'Invalid pagination parameters'}), 400
+
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_tracks = METADATA_CACHE[start:end]
+
+        response = {
+            'tracks': paginated_tracks,
+            'total': len(METADATA_CACHE),
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (len(METADATA_CACHE) + per_page - 1) // per_page
+        }
+
+        # For backward compatibility, if no pagination params, return full array
+        if 'page' not in request.args and 'per_page' not in request.args:
+            return jsonify(METADATA_CACHE)
+
+        print(f"Returning {len(paginated_tracks)} tracks (page {page}/{response['total_pages']}).")
+        return jsonify(response)
 
 @app.route('/music/<filename>')
 def stream_music(filename):
     """Stream MP3 file for playback"""
-    return send_from_directory(MUSIC_FOLDER, filename, mimetype='audio/mpeg')
+    response = make_response(send_from_directory(MUSIC_FOLDER, filename, mimetype='audio/mpeg', conditional=True))
+    response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour cache
+    return response
 
 @app.route('/api/pictures')
 def get_pictures():
@@ -1671,7 +1697,7 @@ if __name__ == '__main__':
             print("⚠ mDNS disabled: Using IP address instead")
         print("Press Ctrl+C to stop")
         print("=" * 50)
-        app.run(host='0.0.0.0', port=5001, debug=False)
+        app.run(host='0.0.0.0', port=SERVICE_PORT, debug=False)
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
