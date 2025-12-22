@@ -1,6 +1,6 @@
 import os
-import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -65,11 +65,19 @@ FILE_CHANGE_LOCK = threading.Lock()
 
 # mDNS Configuration
 ZEROCONF_INSTANCE = None
+ZEROCONF_INSTANCES = []  # Multiple service registrations for better Android compatibility
 # Default mDNS service name uses system hostname unless overridden by env var
 HOSTNAME = socket.gethostname().split('.')[0]
 SERVICE_NAME = os.environ.get("SERVICE_NAME", HOSTNAME)
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_TYPE_SHORT = SERVICE_TYPE.replace(".local.", "")  # For avahi-publish-service
+
+# Additional service types for Android compatibility
+ADDITIONAL_SERVICE_TYPES = [
+    "_workstation._tcp.local.",
+    "_smb._tcp.local.",
+    "_airplay._tcp.local.",
+]
 
 # Auto-detect available port
 def find_available_port(start_port=5000, max_tries=100):
@@ -553,7 +561,6 @@ def index():
 def tailscale_status():
     """Get TailScale status"""
     try:
-        import subprocess
         result = subprocess.run(['tailscale', 'status', '--json'],
                               capture_output=True, text=True, timeout=10)
 
@@ -603,7 +610,6 @@ def tailscale_status():
 def tailscale_up():
     """Enable TailScale"""
     try:
-        import subprocess
         result = subprocess.run(['sudo', 'tailscale', 'up'],
                               capture_output=True, text=True, timeout=30)
 
@@ -628,7 +634,6 @@ def tailscale_up():
 def tailscale_down():
     """Disable TailScale"""
     try:
-        import subprocess
         result = subprocess.run(['sudo', 'tailscale', 'down'],
                               capture_output=True, text=True, timeout=30)
 
@@ -825,6 +830,60 @@ def support_page():
     """Serve the support page"""
     return send_from_directory('static', 'support.html')
 
+@app.route('/server-info')
+def server_info():
+    """Display server information including IP for phone access"""
+    local_ip = get_local_ip()
+    hostname = socket.gethostname()
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Server Info - {hostname}</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 20px; background: #1a1a1a; color: #fff; }}
+            .container {{ max-width: 600px; margin: 0 auto; }}
+            .card {{ background: #2a2a2a; padding: 20px; border-radius: 10px; margin: 20px 0; }}
+            .ip {{ font-size: 2em; font-weight: bold; color: #4CAF50; word-break: break-all; }}
+            .label {{ color: #aaa; font-size: 0.9em; }}
+            .url {{ background: #333; padding: 10px; border-radius: 5px; font-family: monospace; }}
+            .button {{ display: inline-block; background: #4CAF50; color: white; padding: 15px 30px;
+                       text-decoration: none; border-radius: 5px; margin: 10px 5px; font-size: 1.2em; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🎵 Music Server</h1>
+            <div class="card">
+                <div class="label">Server IP Address</div>
+                <div class="ip">{local_ip}</div>
+            </div>
+            <div class="card">
+                <div class="label">Hostname</div>
+                <div style="font-size: 1.5em;">{hostname}.local</div>
+            </div>
+            <div class="card">
+                <div class="label">Server URL</div>
+                <div class="url">http://{local_ip}:{SERVICE_PORT}</div>
+            </div>
+            <div class="card">
+                <p><strong>To access from your phone:</strong></p>
+                <ol>
+                    <li>Open your phone's browser</li>
+                    <li>Go to: <strong>http://{local_ip}:{SERVICE_PORT}</strong></li>
+                    <li>Or scan the QR code if displayed on the Pi</li>
+                </ol>
+            </div>
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="http://{local_ip}:{SERVICE_PORT}" class="button">🎵 Open Music Server</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
 @app.route('/setup-wifi')
 def wifi_setup_page():
     """Serve the WiFi setup page"""
@@ -950,7 +1009,6 @@ def wifi_reboot():
         print("System reboot requested via API")
 
         # Reboot the system using subprocess
-        import subprocess
         subprocess.run(['sudo', 'reboot'], check=True)
 
         # This line will never be reached
@@ -1463,20 +1521,36 @@ def get_wifi_status():
     }
 
 def register_mdns_service():
-    """Register mDNS service for network discovery"""
-    global ZEROCONF_INSTANCE, REGISTERED_SERVICE_NAME, AVAHI_PROCESS
+    """Register mDNS service for network discovery with Android compatibility"""
+    global ZEROCONF_INSTANCE, ZEROCONF_INSTANCES, REGISTERED_SERVICE_NAME, AVAHI_PROCESS
 
     if not ZEROCONF_AVAILABLE:
         print("mDNS not available (zeroconf not installed)")
         print("Install with: pip install zeroconf")
         return None
 
-    # Check network connectivity using the new function
-    print("Checking network connectivity...")
-    
+    # Check and ensure avahi-daemon is running
+    print("Checking mDNS service (avahi-daemon)...")
+    try:
+        result = subprocess.run(
+            ['systemctl', 'is-active', '--quiet', 'avahi-daemon'],
+            check=False
+        )
+        if result.returncode == 0:
+            print("✓ avahi-daemon is running")
+        else:
+            print("⚠ avahi-daemon not running, trying to start...")
+            subprocess.run(['sudo', 'systemctl', 'start', 'avahi-daemon'], check=False)
+            print("✓ Started avahi-daemon")
+    except Exception as e:
+        print(f"  Note: Could not check avahi-daemon: {e}")
+
+    # Check network connectivity
+    print("\nChecking network connectivity...")
+
     local_ip = get_local_ip()
     has_internet = check_internet_connection()
-    
+
     if has_internet:
         print("✓ Internet connection available")
     elif local_ip and not local_ip.startswith("127."):
@@ -1487,88 +1561,101 @@ def register_mdns_service():
         print("  WiFi setup required. Visit /setup-wifi to configure WiFi")
 
     hostname = socket.gethostname()
-    # Use the robust IP we just fetched
     ip_address = local_ip
-
-    # The .local hostname will be based on the actual system's hostname
     server_local_hostname = f"{hostname}.local."
-    service_display_name = f"{SERVICE_NAME} (on {hostname})" # Display actual system hostname
 
     if not ip_address or ip_address.startswith("127."):
-        # Bail out early with a clear message instead of letting zeroconf throw
         print("⚠ Warning: Could not register mDNS service")
-        print("  Error: No usable IP address available for mDNS (got loopback/offline)")
-        print("  Troubleshooting:")
-        print("  - Connect to WiFi or Ethernet and restart the service")
-        print("  - Check network status: hostname -I")
-        print("  - Verify wlan0 is up: ip link show wlan0")
-        print(f"  You can still access the server at: http://{ip_address or 'localhost'}:{SERVICE_PORT}")
-        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
+        print("  Error: No usable IP address available for mDNS")
         return None
 
-    def build_service_info(name: str):
-        """Create a ServiceInfo object for the given name"""
-        service_name = f"{name}.{SERVICE_TYPE}" # e.g., "cubie._http._tcp.local."
+    def build_service_info(name: str, service_type: str):
+        """Create a ServiceInfo object with Android-compatible settings"""
+        service_name = f"{name}.{service_type}"
+        # Add comprehensive TXT records for Android discovery
+        txt_records = {
+            'path': '/',
+            'description': 'Music Server',
+            'version': '1.0',
+            'device': hostname,
+            'port': str(SERVICE_PORT),
+        }
         return ServiceInfo(
-            SERVICE_TYPE,
+            service_type,
             service_name,
             addresses=[socket.inet_aton(ip_address)],
             port=SERVICE_PORT,
-            properties={
-                'path': '/',
-                'description': 'Music Server'
-            },
-            server=server_local_hostname # This will be based on the system's hostname (e.g., "cubie.local" or "raspberrypi.local")
+            properties=txt_records,
+            server=server_local_hostname
         )
 
     registered_service_name = SERVICE_NAME
+    registered_services = []
 
     try:
-        info = build_service_info(registered_service_name)
-
-        # Register the service (try preferred name first)
+        # Primary HTTP service
         zeroconf = Zeroconf(
-            interfaces=InterfaceChoice.All,  # Advertise on all interfaces (IPv4 only)
-            ip_version=IPVersion.V4Only
+            interfaces=InterfaceChoice.All,
+            ip_version=IPVersion.All
         )
+
         try:
+            info = build_service_info(registered_service_name, SERVICE_TYPE)
             zeroconf.register_service(info)
+            registered_services.append((zeroconf, info))
+            print(f"✓ Registered HTTP service: {registered_service_name}")
         except NonUniqueNameException:
-            # Clean up before retrying
             zeroconf.close()
-
-            # Fallback: include hostname to avoid collisions
             registered_service_name = f"{SERVICE_NAME}-{hostname}"
-            print("⚠ mDNS service name already in use on the network.")
-            print(f"  Trying fallback service name: {registered_service_name}")
-
-            info = build_service_info(registered_service_name)
-            zeroconf = Zeroconf(
-                interfaces=InterfaceChoice.All,
-                ip_version=IPVersion.V4Only
-            )
+            zeroconf = Zeroconf(interfaces=InterfaceChoice.All, ip_version=IPVersion.All)
+            info = build_service_info(registered_service_name, SERVICE_TYPE)
             zeroconf.register_service(info)
+            registered_services.append((zeroconf, info))
+            print(f"⚠ Name collision, using fallback: {registered_service_name}")
+
+        # Register as _workstation._tcp for Android network discovery
+        try:
+            workstation_info = build_service_info(registered_service_name, "_workstation._tcp.local.")
+            zeroconf.register_service(workstation_info)
+            registered_services.append((zeroconf, workstation_info))
+            print(f"✓ Registered workstation service for Android discovery")
+        except Exception as e:
+            print(f"  Note: Could not register workstation service: {e}")
+
+        # Register hostname directly for name resolution
+        try:
+            hostname_info = ServiceInfo(
+                "_tcp.local.",
+                f"{hostname}._tcp.local.",
+                addresses=[socket.inet_aton(ip_address)],
+                port=SERVICE_PORT,
+                properties={'name': 'Music Server'},
+                server=server_local_hostname
+            )
+            zeroconf.register_service(hostname_info)
+            registered_services.append((zeroconf, hostname_info))
+            print(f"✓ Registered hostname service")
+        except Exception as e:
+            print(f"  Note: Could not register hostname service: {e}")
 
         ZEROCONF_INSTANCE = zeroconf
         REGISTERED_SERVICE_NAME = registered_service_name
+        ZEROCONF_INSTANCES = registered_services
 
-        service_display_name = f"{registered_service_name} (on {hostname})"
+        print(f"\n✓ mDNS services registered successfully")
+        print(f"  - Service Name: {registered_service_name}")
+        print(f"  - IP Address: {ip_address}")
+        print(f"  - Port: {SERVICE_PORT}")
+        print(f"  - Hostname: {hostname}.local")
+        print(f"  - Services:")
+        print(f"    • HTTP: http://{hostname}.local:{SERVICE_PORT}")
+        print(f"    • Workstation: {hostname}.local")
+        print(f"    • Direct: http://{ip_address}:{SERVICE_PORT}")
+        print(f"\n📱 For Android users:")
+        print(f"    Try accessing: http://{hostname}.local:{SERVICE_PORT}")
+        print(f"    If that doesn't work, use the IP address shown above")
 
-        print(f"✓ mDNS service '{registered_service_name}' registered: http://{server_local_hostname}:{SERVICE_PORT}")
-        print(f"  - Service Display Name: {service_display_name}")
-        print(f"  - Local IP: {ip_address}")
-        print(f"  - System Hostname: {hostname}")
-        print(f"  - Interface: wlan0")
-        print(f"  - Access URLs:")
-        print(f"    • http://{server_local_hostname}:{SERVICE_PORT}")
-        print(f"    • http://{ip_address}:{SERVICE_PORT}")
-
-        if hostname.lower() != registered_service_name.lower():
-            print(f"  - Note: If your system hostname ('{hostname}') differs from the registered service name ('{registered_service_name}'),")
-            print(f"          you may need to access it at http://{hostname}.local:{SERVICE_PORT} or change your system hostname.")
-
-        # Verify the service is registered on the correct interface
-        import subprocess
+        # Verify service visibility
         try:
             result = subprocess.run(
                 ['avahi-browse', '-a', '-t'],
@@ -1577,76 +1664,44 @@ def register_mdns_service():
                 timeout=5
             )
             output = result.stdout.lower()
-            if registered_service_name.lower() in output or SERVICE_NAME.lower() in output:
-                print(f"  - mDNS service visible on network (via avahi-browse)")
+            if registered_service_name.lower() in output:
+                print("\n✓ Service visible via avahi-browse")
             else:
-                print(f"  - Warning: Service not visible in avahi-browse output")
-                print(f"    (checked for '{registered_service_name}' / '{SERVICE_NAME}')")
+                print("\n⚠ Service not visible in avahi-browse (may still work on Android)")
         except:
             pass
 
         return zeroconf
+
     except Exception as e:
         import traceback
-        error_msg = str(e) if str(e) else repr(e)
-        print(f"⚠ Warning: Could not register mDNS service")
-        print(f"  Error: {error_msg}")
-        print(f"  Error type: {type(e).__name__}")
-        print(f"  Context:")
-        print(f"    - Hostname: {hostname}")
-        print(f"    - IP address: {ip_address}")
-        print(f"    - Service name: {SERVICE_NAME}")
-        print(f"  Traceback (most recent call last):")
+        print("⚠ Warning: mDNS registration failed")
+        print(f"  Error: {str(e)}")
         traceback.print_exc()
-        print(f"  You can still access the server at: http://{ip_address}:{SERVICE_PORT}")
-        print(f"  Or: http://{hostname}.local:{SERVICE_PORT}")
-        print(f"  ")
-        print(f"  Troubleshooting:")
-        print(f"  - Ensure network is ready before starting")
-        print(f"  - Check if avahi-daemon is running: sudo systemctl status avahi-daemon")
-        print(f"  - Verify network connectivity: ping 8.8.8.8")
-        print(f"  - Try manual service registration with avahi-browse")
-        # Try avahi-publish-service fallback even if Zeroconf failed
-        avahi_bin = shutil.which("avahi-publish-service")
-        if avahi_bin:
-            try:
-                AVAHI_PROCESS = subprocess.Popen(
-                    [avahi_bin, registered_service_name, SERVICE_TYPE_SHORT, str(SERVICE_PORT), "/"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                REGISTERED_SERVICE_NAME = registered_service_name
-                print(f"  - Advertising via avahi-publish-service fallback ({registered_service_name}.{SERVICE_TYPE_SHORT})")
-            except Exception as avahi_err:
-                print(f"  - Failed to start avahi-publish-service fallback: {avahi_err}")
         return None
-
-    # Start avahi-publish-service as a backup broadcaster if available
-    avahi_bin = shutil.which("avahi-publish-service")
-    if avahi_bin:
-        try:
-            AVAHI_PROCESS = subprocess.Popen(
-                [avahi_bin, registered_service_name, SERVICE_TYPE_SHORT, str(SERVICE_PORT), "/"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            print(f"  - Also advertising via avahi-publish-service ({registered_service_name}.{SERVICE_TYPE_SHORT})")
-        except Exception as e:
-            print(f"  - Failed to start avahi-publish-service fallback: {e}")
-
-    return ZEROCONF_INSTANCE
 
 def unregister_mdns_service():
     """Unregister mDNS service on shutdown"""
-    global ZEROCONF_INSTANCE, AVAHI_PROCESS
+    global ZEROCONF_INSTANCE, ZEROCONF_INSTANCES, AVAHI_PROCESS
+
+    # Unregister all services
+    if ZEROCONF_INSTANCES:
+        for zeroconf, service_info in ZEROCONF_INSTANCES:
+            try:
+                zeroconf.unregister_service(service_info)
+            except Exception as e:
+                print(f"Error unregistering service: {e}")
+
     if ZEROCONF_INSTANCE:
         try:
             ZEROCONF_INSTANCE.close()
-            print("✓ mDNS service unregistered")
+            print("✓ mDNS services unregistered")
         except Exception as e:
-            print(f"Error unregistering mDNS service: {e}")
+            print(f"Error closing mDNS service: {e}")
         finally:
             ZEROCONF_INSTANCE = None
+            ZEROCONF_INSTANCES = []
+
     if AVAHI_PROCESS:
         try:
             AVAHI_PROCESS.terminate()
@@ -1672,7 +1727,7 @@ def start_file_monitor():
     observer.schedule(event_handler, DOCUMENTS_FOLDER, recursive=False)
     
     observer.start()
-    print(f"Started file monitor on music, pictures, and documents")
+    print("Started file monitor on music, pictures, and documents")
     return observer
 
 if __name__ == '__main__':
