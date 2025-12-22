@@ -407,6 +407,10 @@ Common fixes:
 2. **Metadata Size**: Keep lyrics under 10KB per file
 3. **Refresh Rate**: Increase `POLLING_INTERVAL` if needed
 4. **Auto-start**: Use systemd for reliability
+5. **Pagination**: Use `?page=1&per_page=50` to reduce initial payload sizes
+6. **Caching**: Media files are cached for 1 hour, static assets for 1 year
+7. **Conditional Requests**: ETags and Last-Modified headers enable efficient caching
+8. **Range Requests**: Large files support partial downloads and seeking
 
 ## Development
 
@@ -414,17 +418,23 @@ Common fixes:
 
 ```
 GET  /                  → Serve index.html
-GET  /api/music         → Get all music files (JSON)
-GET  /music/<filename>  → Stream MP3 file
+GET  /api/music         → Get music files (JSON) - supports pagination (?page=1&per_page=50)
+GET  /music/<filename>  → Stream MP3 file (with caching and range requests)
 POST /api/refresh       → Manually reload metadata
 GET  /api/health        → Health check
 GET  /api/config        → Get server configuration (for voice assistant)
+GET  /api/pictures      → Get picture files (JSON) - supports pagination
+GET  /api/pictures/<filename> → Serve picture file (with caching)
+GET  /api/pictures/<filename>/thumbnail → Serve thumbnail (with caching)
+GET  /api/documents     → Get document files (JSON) - supports pagination
+GET  /api/documents/<filename> → Serve/download document file (with caching)
 ```
 
 ### API Response Format
 
 **GET /api/music**
 ```json
+// Full response (no pagination params)
 [
   {
     "filename": "song.mp3",
@@ -436,6 +446,25 @@ GET  /api/config        → Get server configuration (for voice assistant)
     "modified": "2025-11-25T10:30:00"
   }
 ]
+
+// Paginated response (?page=1&per_page=50)
+{
+  "tracks": [
+    {
+      "filename": "song.mp3",
+      "title": "Song Title",
+      "artist": "Artist Name",
+      "lyrics": "Song lyrics...",
+      "duration": 180.5,
+      "created": "2025-11-25T10:30:00",
+      "modified": "2025-11-25T10:30:00"
+    }
+  ],
+  "total": 100,
+  "page": 1,
+  "per_page": 50,
+  "total_pages": 2
+}
 ```
 
 **GET /api/config** (for voice assistant)
