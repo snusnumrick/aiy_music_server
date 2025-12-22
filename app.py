@@ -1,20 +1,17 @@
-from flask import Flask, jsonify, send_from_directory, request, make_response
-from mutagen.mp3 import MP3
-from mutagen.id3 import ID3NoHeaderError
 import os
-import time
-import socket
-import signal
-import sys
-from datetime import datetime
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-import threading
-from PIL import Image, ExifTags
 import shutil
-import subprocess
+import socket
+import sys
+import threading
+import time
+from datetime import datetime
+
+from PIL import Image, ExifTags
+from flask import Flask, jsonify, send_from_directory, request, make_response
+from mutagen.id3 import ID3NoHeaderError
+from mutagen.mp3 import MP3
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 # Force unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
@@ -73,7 +70,29 @@ HOSTNAME = socket.gethostname().split('.')[0]
 SERVICE_NAME = os.environ.get("SERVICE_NAME", HOSTNAME)
 SERVICE_TYPE = "_http._tcp.local."
 SERVICE_TYPE_SHORT = SERVICE_TYPE.replace(".local.", "")  # For avahi-publish-service
-SERVICE_PORT = 5001
+
+# Auto-detect available port
+def find_available_port(start_port=5000, max_tries=100):
+    """Find an available port starting from start_port"""
+    import socket
+    for port in range(start_port, start_port + max_tries):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', port))
+                return port
+        except OSError:
+            continue
+    raise RuntimeError(f"Could not find an available port in range {start_port}-{start_port + max_tries}")
+
+# Default preferred port
+PREFERRED_SERVICE_PORT = int(os.environ.get("SERVICE_PORT", 5000))
+SERVICE_PORT = find_available_port(PREFERRED_SERVICE_PORT)
+
+if SERVICE_PORT != PREFERRED_SERVICE_PORT:
+    print(f"Port {PREFERRED_SERVICE_PORT} was in use, using port {SERVICE_PORT} instead")
+else:
+    print(f"Using port {SERVICE_PORT}")
+
 REGISTERED_SERVICE_NAME = SERVICE_NAME
 AVAHI_PROCESS = None
 
@@ -1292,7 +1311,7 @@ network={{
 
                 return {
                     'success': True,
-                    'message': 'WiFi connected! mDNS service updated. You can now access the server at http://cubie.local:5001',
+                    'message': f'WiFi connected! mDNS service updated. You can now access the server at http://cubie.local:{SERVICE_PORT}',
                     'reboot_required': False
                 }
         else:
@@ -1329,7 +1348,6 @@ network={{
 def get_wifi_status():
     """Get current WiFi connection status using iwconfig or iw"""
     import subprocess
-    import shutil
 
     # Helper to run command
     def run_cmd(cmd_list):
@@ -1454,7 +1472,6 @@ def register_mdns_service():
         return None
 
     # Check network connectivity using the new function
-    import time
     print("Checking network connectivity...")
     
     local_ip = get_local_ip()
@@ -1666,6 +1683,7 @@ if __name__ == '__main__':
     get_exif_data("pictures/image_1765229010_A_cute_robot_painter_in_a_futu.jpg")
 
     print(f"Music folder: {MUSIC_FOLDER}")
+    print(f"Server port: {SERVICE_PORT} (auto-selected)")
 
     # Check internet connectivity on startup
     print("\nChecking internet connection...")
@@ -1674,7 +1692,7 @@ if __name__ == '__main__':
     else:
         print("⚠ No internet connection detected")
         print("  WiFi setup is required to get internet access")
-        print("  Visit http://localhost:5001/setup-wifi to configure WiFi")
+        print(f"  Visit http://localhost:{SERVICE_PORT}/setup-wifi to configure WiFi")
 
     load_metadata()
 
@@ -1690,9 +1708,9 @@ if __name__ == '__main__':
         observer = None
 
     try:
-        print("\nStarting server on http://0.0.0.0:5001")
+        print(f"\nStarting server on http://0.0.0.0:{SERVICE_PORT}")
         if zeroconf_instance:
-            print(f"✓ mDNS enabled: Access via http://cubie.local:5001")
+            print(f"✓ mDNS enabled: Access via http://cubie.local:{SERVICE_PORT}")
         else:
             print("⚠ mDNS disabled: Using IP address instead")
         print("Press Ctrl+C to stop")
