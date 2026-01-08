@@ -1644,6 +1644,7 @@ def register_mdns_service():
 
     registered_service_name = SERVICE_NAME
     registered_services = []
+    AVAHI_PROCESS = None  # Track avahi-publish-service process
 
     try:
         # Primary HTTP service
@@ -1695,6 +1696,45 @@ def register_mdns_service():
         REGISTERED_SERVICE_NAME = registered_service_name
         ZEROCONF_INSTANCES = registered_services
 
+        # ALSO use avahi-publish-service for better local network support
+        # This is especially important for hotspot mode where avahi-daemon may not work
+        print("\nStarting avahi-publish-service for local network...")
+        try:
+            # Stop any existing avahi-publish-service
+            subprocess.run(['pkill', '-f', 'avahi-publish-service'], stderr=subprocess.DEVNULL)
+
+            # Start avahi-publish-service in background
+            # This provides more reliable mDNS in local networks
+            avahi_cmd = [
+                'avahi-publish-service',
+                registered_service_name,
+                SERVICE_TYPE_SHORT,  # e.g., _http._tcp
+                str(SERVICE_PORT),
+                '&path=/',
+                f'&device={hostname}',
+            ]
+
+            process = subprocess.Popen(
+                avahi_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # Check if it started successfully
+            time.sleep(0.5)
+            if process.poll() is None:
+                AVAHI_PROCESS = process
+                print(f"✓ Started avahi-publish-service (PID: {process.pid})")
+            else:
+                stdout, stderr = process.communicate()
+                print(f"⚠ avahi-publish-service failed: {stderr}")
+
+        except FileNotFoundError:
+            print("⚠ avahi-publish-service not installed (skipping)")
+        except Exception as e:
+            print(f"⚠ Error starting avahi-publish-service: {e}")
+
         print(f"\n✓ mDNS services registered successfully")
         print(f"  - Service Name: {registered_service_name}")
         print(f"  - IP Address: {ip_address}")
@@ -1737,6 +1777,23 @@ def unregister_mdns_service():
     """Unregister mDNS service on shutdown"""
     global ZEROCONF_INSTANCE, ZEROCONF_INSTANCES, AVAHI_PROCESS
 
+    # Stop avahi-publish-service first
+    if AVAHI_PROCESS:
+        try:
+            AVAHI_PROCESS.terminate()
+            AVAHI_PROCESS.wait(timeout=2)
+            print("✓ avahi-publish-service stopped")
+        except Exception as e:
+            print(f"Error stopping avahi-publish-service: {e}")
+        finally:
+            AVAHI_PROCESS = None
+
+    # Also kill any remaining avahi-publish-service processes
+    try:
+        subprocess.run(['pkill', '-f', 'avahi-publish-service'], stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
     # Unregister all services
     if ZEROCONF_INSTANCES:
         for zeroconf, service_info in ZEROCONF_INSTANCES:
@@ -1754,16 +1811,6 @@ def unregister_mdns_service():
         finally:
             ZEROCONF_INSTANCE = None
             ZEROCONF_INSTANCES = []
-
-    if AVAHI_PROCESS:
-        try:
-            AVAHI_PROCESS.terminate()
-            AVAHI_PROCESS.wait(timeout=2)
-            print("✓ avahi-publish-service stopped")
-        except Exception as e:
-            print(f"Error stopping avahi-publish-service: {e}")
-        finally:
-            AVAHI_PROCESS = None
 
 def start_file_monitor():
     """Start the file system monitor"""
