@@ -158,6 +158,84 @@ EOF
     echo "View logs with: sudo journalctl -u ${SERVICE_NAME} -f"
 fi
 
+# Autohotspot Setup
+echo ""
+echo "=================================================="
+echo "  Autohotspot Setup"
+echo "=================================================="
+echo ""
+echo "Autohotspot automatically switches between WiFi and hotspot modes."
+echo "• If configured WiFi is in range → Connects to WiFi"
+echo "• If WiFi is not in range → Creates hotspot"
+echo ""
+echo "This is perfect for:"
+echo "• Portable use (home + office + travel)"
+echo "• Automatic mode switching"
+echo "• Enhanced Android compatibility"
+echo ""
+read -p "Setup autohotspot? (y/n) " -r
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "Installing autohotspot with AIY Music Server integration..."
+
+    # Check if autohotspot directory exists
+    if [ -d "./autohotspot" ]; then
+        # Run the install script
+        if [ -f "./install-autohotspot.sh" ]; then
+            sudo bash ./install-autohotspot.sh
+        else
+            echo "Installing autohotspot manually..."
+
+            # Copy autohotspot script
+            if [ -f "./autohotspot/autohotspotN" ]; then
+                cp "./autohotspot/autohotspotN" /usr/bin/autohotspotN
+                chmod +x /usr/bin/autohotspotN
+                echo "✓ autohotspotN installed"
+            else
+                echo "✗ autohotspotN not found"
+                exit 1
+            fi
+
+            # Copy systemd service
+            if [ -f "./autohotspot/autohotspot.service" ]; then
+                cp "./autohotspot/autohotspot.service" /etc/systemd/system/
+                systemctl daemon-reload
+                echo "✓ systemd service installed"
+            else
+                echo "✗ autohotspot.service not found"
+                exit 1
+            fi
+
+            echo ""
+            echo "Autohotspot files installed successfully!"
+            echo ""
+            echo "Next steps:"
+            echo "1. Configure your WiFi networks in /etc/wpa_supplicant/wpa_supplicant.conf"
+            echo "2. Enable autohotspot: sudo systemctl enable autohotspot"
+            echo "3. Start autohotspot: sudo systemctl start autohotspot"
+        fi
+
+        echo ""
+        echo -e "${GREEN}✓ Autohotspot setup complete${NC}"
+        echo ""
+        echo "Autohotspot will now:"
+        echo "• Monitor for your configured WiFi networks"
+        echo "• Connect to WiFi when available"
+        echo "• Create hotspot when WiFi is not in range"
+        echo "• Automatically start/stop music server"
+        echo ""
+        echo "Configuration file: /etc/wpa_supplicant/wpa_supplicant.conf"
+        echo "Service status: sudo systemctl status autohotspot"
+        echo "View logs: sudo journalctl -u autohotspot -f"
+        echo ""
+    else
+        echo -e "${RED}Error: autohotspot directory not found${NC}"
+        echo "Skipping autohotspot installation..."
+    fi
+fi
+
 # Android mDNS Setup
 echo ""
 read -p "Setup mDNS for Android compatibility? (recommended for phones) (y/n) " -r
@@ -219,4 +297,20 @@ echo "  🖥️  Desktop: http://cubie.local:5000"
 echo "  🌐 Captive Portal: http://<wifi-ip> (if enabled)"
 echo ""
 echo "  Server auto-detects port, starting from 5000"
+echo ""
+echo "=================================================="
+echo ""
+echo "  Autohotspot Status:"
+echo ""
+if systemctl is-enabled autohotspot >/dev/null 2>&1; then
+    echo -e "  ${GREEN}✓${NC} Autohotspot is installed and enabled"
+    echo "    - Automatically switches WiFi/hotspot modes"
+    echo "    - Check status: sudo systemctl status autohotspot"
+    echo "    - View logs: sudo journalctl -u autohotspot -f"
+else
+    echo -e "  ${YELLOW}⚠${NC} Autohotspot is not installed"
+    echo "    - Install with: sudo ./install-autohotspot.sh"
+    echo "    - Or enable during setup (recommended for portable use)"
+fi
+echo ""
 echo "=================================================="

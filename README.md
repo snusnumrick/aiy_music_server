@@ -102,6 +102,27 @@ This configures avahi-daemon for Android's mDNS implementation and registers add
 
 For detailed Android access instructions, see: **`ANDROID_ACCESS.md`**
 
+### Autohotspot (Automatic WiFi/Hotspot Switching)
+
+For portable use, autohotspot automatically switches between WiFi and hotspot modes:
+
+- **WiFi available**: Connects to your configured WiFi networks
+- **WiFi not in range**: Creates a hotspot automatically
+- **Enhanced Android support**: DNS + mDNS for maximum compatibility
+
+**Install during setup:**
+```bash
+sudo ./setup.sh
+# Choose "Yes" for autohotspot installation
+```
+
+**Manual installation:**
+```bash
+sudo ./music_server/install-autohotspot.sh
+```
+
+For detailed information, see: **`AUTOHOTSPOT_INTEGRATION.md`**
+
 ## Directory Structure
 
 ```

@@ -1698,37 +1698,69 @@ def register_mdns_service():
 
         # ALSO use avahi-publish-service for better local network support
         # This is especially important for hotspot mode where avahi-daemon may not work
+        # Android needs multiple service types for reliable discovery in local-only mode
         print("\nStarting avahi-publish-service for local network...")
         try:
             # Stop any existing avahi-publish-service
             subprocess.run(['pkill', '-f', 'avahi-publish-service'], stderr=subprocess.DEVNULL)
 
-            # Start avahi-publish-service in background
-            # This provides more reliable mDNS in local networks
-            avahi_cmd = [
+            # Start multiple avahi-publish-service instances for Android compatibility
+            # Android responds better to these service types in local networks
+
+            # 1. HTTP service (standard)
+            avahi_http_cmd = [
                 'avahi-publish-service',
                 registered_service_name,
-                SERVICE_TYPE_SHORT,  # e.g., _http._tcp
+                '_http._tcp',
                 str(SERVICE_PORT),
-                '&path=/',
-                f'&device={hostname}',
+                'path=/',
+                f'device={hostname}',
+                'description=Music Server',
             ]
 
-            process = subprocess.Popen(
-                avahi_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
+            # 2. AirPlay service (Android/Chromecast compatible)
+            avahi_airplay_cmd = [
+                'avahi-publish-service',
+                f'{registered_service_name}-airplay',
+                '_airplay._tcp',
+                str(SERVICE_PORT),
+                'device=Music Server',
+                f'fv=1',
+            ]
 
-            # Check if it started successfully
+            # 3. Workstation service (Android network discovery)
+            avahi_workstation_cmd = [
+                'avahi-publish-service',
+                f'{registered_service_name}-workstation',
+                '_workstation._tcp',
+                str(SERVICE_PORT),
+                'Workstation',
+            ]
+
+            # Start all three services in background
+            processes = []
+            for cmd in [avahi_http_cmd, avahi_airplay_cmd, avahi_workstation_cmd]:
+                try:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    processes.append(proc)
+                    print(f"✓ Started: {cmd[2]} service")
+                except Exception as e:
+                    print(f"⚠ Failed to start {cmd[2]}: {e}")
+
+            # Check if at least one service started
             time.sleep(0.5)
-            if process.poll() is None:
-                AVAHI_PROCESS = process
-                print(f"✓ Started avahi-publish-service (PID: {process.pid})")
+            running_processes = [p for p in processes if p.poll() is None]
+
+            if running_processes:
+                AVAHI_PROCESS = running_processes[0]  # Store first one for cleanup
+                print(f"✓ Started {len(running_processes)} mDNS services (PID: {running_processes[0].pid})")
             else:
-                stdout, stderr = process.communicate()
-                print(f"⚠ avahi-publish-service failed: {stderr}")
+                print("⚠ No mDNS services started")
 
         except FileNotFoundError:
             print("⚠ avahi-publish-service not installed (skipping)")
@@ -1777,22 +1809,13 @@ def unregister_mdns_service():
     """Unregister mDNS service on shutdown"""
     global ZEROCONF_INSTANCE, ZEROCONF_INSTANCES, AVAHI_PROCESS
 
-    # Stop avahi-publish-service first
-    if AVAHI_PROCESS:
-        try:
-            AVAHI_PROCESS.terminate()
-            AVAHI_PROCESS.wait(timeout=2)
-            print("✓ avahi-publish-service stopped")
-        except Exception as e:
-            print(f"Error stopping avahi-publish-service: {e}")
-        finally:
-            AVAHI_PROCESS = None
-
-    # Also kill any remaining avahi-publish-service processes
+    # Stop avahi-publish-service processes first
+    # We now track multiple processes, so just kill all of them
     try:
         subprocess.run(['pkill', '-f', 'avahi-publish-service'], stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
+        print("✓ Stopped all avahi-publish-service processes")
+    except Exception as e:
+        print(f"Error stopping avahi-publish-service: {e}")
 
     # Unregister all services
     if ZEROCONF_INSTANCES:
@@ -1811,6 +1834,7 @@ def unregister_mdns_service():
         finally:
             ZEROCONF_INSTANCE = None
             ZEROCONF_INSTANCES = []
+            AVAHI_PROCESS = None
 
 def start_file_monitor():
     """Start the file system monitor"""
