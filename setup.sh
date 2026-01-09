@@ -240,8 +240,18 @@ fi
 echo ""
 read -p "Setup mDNS for Android compatibility? (recommended for phones) (y/n) " -r
 echo ""
+
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Running Android mDNS setup..."
+    # Check if autohotspot is installed
+    if systemctl is-enabled autohotspot >/dev/null 2>&1; then
+        echo "Note: Autohotspot is installed, which includes enhanced mDNS."
+        echo "This step configures the system avahi-daemon for additional Android compatibility."
+        echo ""
+        echo "Running Android mDNS setup..."
+    else
+        echo "Running Android mDNS setup..."
+    fi
+
     if [ -f "./setup_android_mdns.sh" ]; then
         sudo bash ./setup_android_mdns.sh
         echo ""
