@@ -110,6 +110,8 @@ For portable use, autohotspot automatically switches between WiFi and hotspot mo
 - **WiFi not in range**: Creates a hotspot automatically
 - **Enhanced Android support**: DNS + mDNS for maximum compatibility
 
+Note: `scripts/start_hotspot.sh` is a manual “force hotspot now” helper for debugging/QA. For an always-on device, prefer autohotspot so you don’t have competing startup paths.
+
 **Install during setup:**
 ```bash
 sudo ./setup.sh

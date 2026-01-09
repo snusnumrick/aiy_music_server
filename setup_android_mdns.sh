@@ -43,7 +43,8 @@ enable-wide-area=yes
 enable-reflector=no
 check-response-ttl=no
 use-iff-running=no
-allow-interfaces=wlan0,eth0
+# Hotspot setups sometimes use `ap0`/`uap0` instead of `wlan0`.
+allow-interfaces=wlan0,uap0,ap0,wlan1,eth0
 
 [publish]
 publish-addresses=yes

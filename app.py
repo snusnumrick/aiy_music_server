@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from datetime import datetime
+from typing import List, Set, Tuple
 
 from PIL import Image, ExifTags
 from flask import Flask, jsonify, send_from_directory, request, make_response
@@ -1096,7 +1097,12 @@ def get_local_ip():
     except Exception:
         pass
 
-    # 2. Try getting IP from hostname -I (linux)
+    # 2. Prefer an IP from active interfaces (works in hotspot mode too)
+    ips = get_local_ipv4_addresses()
+    if ips:
+        return ips[0]
+
+    # 3. Try getting IP from hostname -I (linux)
     try:
         import subprocess
         result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=1)
@@ -1109,7 +1115,7 @@ def get_local_ip():
     except Exception:
         pass
 
-    # 3. Try parsing ip addr show
+    # 4. Try parsing ip addr show
     try:
         import subprocess
         # Try standard paths
@@ -1137,11 +1143,77 @@ def get_local_ip():
     except Exception:
         pass
 
-    # 4. Fallback to socket.gethostbyname (might return 127.0.1.1 on Debian)
+    # 5. Fallback to socket.gethostbyname (might return 127.0.1.1 on Debian)
     try:
         return socket.gethostbyname(socket.gethostname())
     except Exception:
         return "127.0.0.1"
+
+
+def get_local_ipv4_addresses() -> List[str]:
+    """Return likely-reachable non-loopback IPv4s, in preferred order.
+
+    Hotspot setups sometimes use `ap0`/`uap0` instead of `wlan0`; publishing only a single
+    "best guess" IP can break mDNS if the wrong interface is picked.
+    """
+    try:
+        import subprocess
+
+        preferred_interfaces = ("wlan0", "uap0", "ap0", "wlan1", "eth0")
+        cmds = [
+            ["ip", "-4", "-o", "addr", "show"],
+            ["/sbin/ip", "-4", "-o", "addr", "show"],
+        ]
+
+        output = None
+        for cmd in cmds:
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=1)
+                if result.returncode == 0:
+                    output = result.stdout
+                    break
+            except FileNotFoundError:
+                continue
+
+        if not output:
+            return []
+
+        import re
+
+        candidates: List[Tuple[str, str]] = []
+        for line in output.splitlines():
+            # Example: "2: wlan0    inet 192.168.10.1/24 brd 192.168.10.255 scope global wlan0"
+            match = re.search(r"^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/", line)
+            if not match:
+                continue
+            interface, ip = match.group(1), match.group(2)
+            if ip.startswith("127.") or ip.startswith("169.254."):
+                continue
+            candidates.append((interface, ip))
+
+        if not candidates:
+            return []
+
+        # De-duplicate while keeping the most preferred interface first.
+        seen: Set[str] = set()
+        ordered: List[str] = []
+
+        for preferred in preferred_interfaces:
+            for interface, ip in candidates:
+                if interface != preferred or ip in seen:
+                    continue
+                ordered.append(ip)
+                seen.add(ip)
+
+        for _, ip in candidates:
+            if ip in seen:
+                continue
+            ordered.append(ip)
+            seen.add(ip)
+
+        return ordered
+    except Exception:
+        return []
 
 def check_internet_connection():
     """Check if internet connection is available"""
@@ -1601,7 +1673,8 @@ def register_mdns_service():
     # Check network connectivity
     print("\nChecking network connectivity...")
 
-    local_ip = get_local_ip()
+    ip_addresses = get_local_ipv4_addresses()
+    local_ip = ip_addresses[0] if ip_addresses else get_local_ip()
     has_internet = check_internet_connection()
 
     if has_internet:
@@ -1622,6 +1695,8 @@ def register_mdns_service():
         print("  Error: No usable IP address available for mDNS")
         return None
 
+    mdns_addresses = [socket.inet_aton(ip) for ip in (ip_addresses or [ip_address])]
+
     def build_service_info(name: str, service_type: str):
         """Create a ServiceInfo object with Android-compatible settings"""
         service_name = f"{name}.{service_type}"
@@ -1636,7 +1711,7 @@ def register_mdns_service():
         return ServiceInfo(
             service_type,
             service_name,
-            addresses=[socket.inet_aton(ip_address)],
+            addresses=mdns_addresses,
             port=SERVICE_PORT,
             properties=txt_records,
             server=server_local_hostname
@@ -1650,7 +1725,7 @@ def register_mdns_service():
         # Primary HTTP service
         zeroconf = Zeroconf(
             interfaces=InterfaceChoice.All,
-            ip_version=IPVersion.All
+            ip_version=IPVersion.V4Only
         )
 
         try:
@@ -1661,7 +1736,7 @@ def register_mdns_service():
         except NonUniqueNameException:
             zeroconf.close()
             registered_service_name = f"{SERVICE_NAME}-{hostname}"
-            zeroconf = Zeroconf(interfaces=InterfaceChoice.All, ip_version=IPVersion.All)
+            zeroconf = Zeroconf(interfaces=InterfaceChoice.All, ip_version=IPVersion.V4Only)
             info = build_service_info(registered_service_name, SERVICE_TYPE)
             zeroconf.register_service(info)
             registered_services.append((zeroconf, info))
@@ -1681,7 +1756,7 @@ def register_mdns_service():
             hostname_info = ServiceInfo(
                 "_tcp.local.",
                 f"{hostname}._tcp.local.",
-                addresses=[socket.inet_aton(ip_address)],
+                addresses=mdns_addresses,
                 port=SERVICE_PORT,
                 properties={'name': 'Music Server'},
                 server=server_local_hostname

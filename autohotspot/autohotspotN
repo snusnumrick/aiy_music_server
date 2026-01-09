@@ -101,6 +101,13 @@ address=/music-server/$HOST_IP
 address=/music-server.local/$HOST_IP
 EOF
 
+    # Hint: some hotspot/AP configs drop multicast; this breaks mDNS/Bonjour.
+    # Hostapd can convert multicast to unicast for better reliability.
+    if [ -f /etc/hostapd/hostapd.conf ] && ! grep -q '^multicast_to_unicast=1' /etc/hostapd/hostapd.conf 2>/dev/null; then
+        echo "NOTE: mDNS may not work reliably in hotspot mode without multicast support."
+        echo "      Consider adding 'multicast_to_unicast=1' to /etc/hostapd/hostapd.conf"
+    fi
+
     systemctl start dnsmasq
     systemctl start hostapd
     echo 1 > /proc/sys/net/ipv4/ip_forward
