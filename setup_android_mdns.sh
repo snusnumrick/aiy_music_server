@@ -7,9 +7,15 @@ echo "Setting up mDNS for Android Compatibility"
 echo "============================================"
 echo ""
 
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
 # Update package list
 echo "1. Updating packages..."
-sudo apt-get update -qq
+sudo apt-get update -qq || true
 
 # Install avahi-daemon (mDNS service)
 echo "2. Installing avahi-daemon..."
@@ -18,9 +24,9 @@ sudo apt-get install -y avahi-daemon avahi-utils
 # Enable and start avahi-daemon
 echo "3. Enabling avahi-daemon..."
 sudo systemctl enable avahi-daemon
-sudo systemctl start avahi-daemon
+sudo systemctl start avahi-daemon || true
 echo -e "\nAvahi-daemon status:"
-sudo systemctl status avahi-daemon --no-pager -l
+sudo systemctl status avahi-daemon --no-pager -l || true
 
 # Install Python zeroconf if not already installed
 echo "\n4. Installing/updating Python zeroconf..."
@@ -39,9 +45,6 @@ sudo tee /etc/avahi/avahi-daemon.conf > /dev/null <<'EOF'
 [server]
 use-ipv4=yes
 use-ipv6=yes
-enable-wide-area=yes
-enable-reflector=no
-check-response-ttl=no
 use-iff-running=no
 # Hotspot setups sometimes use `ap0`/`uap0` instead of `wlan0`.
 allow-interfaces=wlan0,uap0,ap0,wlan1,eth0
@@ -51,15 +54,10 @@ publish-addresses=yes
 publish-hinfo=yes
 publish-workstation=yes
 publish-domain=yes
-add-service-cookie=yes
-disable-publishing=no
 disable-user-service-publishing=no
 
 [reflector]
 enable-reflector=no
-
-[users]
-safe-to-reload
 
 [wide-area]
 enable-wide-area=yes
@@ -67,8 +65,23 @@ EOF
 
 # Restart avahi-daemon with new config
 echo "\n6. Restarting avahi-daemon with Android-optimized config..."
-sudo systemctl restart avahi-daemon
+sudo systemctl restart avahi-daemon || true
 sleep 2
+if ! sudo systemctl is-active --quiet avahi-daemon; then
+    echo -e "\n${RED}✗ avahi-daemon failed to start${NC}"
+    echo "Common cause: invalid /etc/avahi/avahi-daemon.conf"
+    echo ""
+    if [ -f /etc/avahi/avahi-daemon.conf.bak ]; then
+        echo "To restore the previous config:"
+        echo "  sudo cp /etc/avahi/avahi-daemon.conf.bak /etc/avahi/avahi-daemon.conf"
+        echo "  sudo systemctl restart avahi-daemon"
+    else
+        echo "Check config syntax and logs:"
+        echo "  sudo systemctl status avahi-daemon --no-pager -l"
+        echo "  sudo journalctl -u avahi-daemon -n 100 --no-pager"
+    fi
+    exit 1
+fi
 
 # Check if hostname is set correctly
 HOSTNAME=$(hostname)
