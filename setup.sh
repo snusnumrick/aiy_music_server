@@ -108,11 +108,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 
     # Create the service file content
     # Note: We escape $MAINPID so it writes literally to the file
+    # Fix: Added wpa_supplicant@wlan0.service to ensure WiFi is ready before starting
     cat << EOF > "${SERVICE_NAME}.service"
 [Unit]
 Description=${SERVICE_DESCRIPTION}
 Documentation=https://github.com/snusnumrick/aiy_media_server
-After=network.target network-online.target
+After=network.target network-online.target wpa_supplicant@wlan0.service
+BindsTo=wpa_supplicant@wlan0.service
 Wants=network-online.target
 Requires=network-online.target
 
