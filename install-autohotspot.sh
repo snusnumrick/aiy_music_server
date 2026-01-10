@@ -31,7 +31,7 @@ echo ""
 # Get the directory where this script is located
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 echo "Script directory: $SCRIPT_DIR"
-PROJECT_ROOT=SCRIPT_DIR
+PROJECT_ROOT=$SCRIPT_DIR
 echo "Project root: $PROJECT_ROOT"
 
 echo "Installing autohotspot..."
