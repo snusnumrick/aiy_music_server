@@ -42,7 +42,7 @@ if [ -f "${PROJECT_ROOT}/autohotspot/autohotspotN" ]; then
     chmod +x /usr/bin/autohotspotN
     echo -e "${GREEN}✓${NC} autohotspotN installed to /usr/bin/"
 else
-    echo -e "${RED}✗${NC} autohotspotN not found!"
+    echo -e "${RED}✗${NC} autohotspotN not found at ${PROJECT_ROOT}/autohotspot/ !"
     exit 1
 fi
 
