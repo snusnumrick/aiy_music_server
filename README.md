@@ -75,7 +75,7 @@ The server will start and register an mDNS service for automatic network discove
 ```
 http://cubie:5000
 ```
-Android automatically appends `.local`, so this becomes `http://cubie.local:5000`
+In hotspot mode, `cubie` is typically resolved via the hotspot DNS (`dnsmasq`). On some Android devices/browsers, `.local` (mDNS) may not resolve reliably.
 
 **🖥️ Desktop/Mac:**
 ```
@@ -425,8 +425,8 @@ dns-sd -B _http._tcp
 sudo ./setup_android_mdns.sh
 
 # On Android, try both methods:
-# 1. http://cubie:5000 (Android auto-appends .local)
-# 2. http://cubie.local:5000 (explicit)
+# 1. http://cubie:5000 (best in hotspot mode; resolved via DNS)
+# 2. http://cubie.local:5000 (mDNS; may not work in some Android browsers)
 ```
 
 **Manual connection:**

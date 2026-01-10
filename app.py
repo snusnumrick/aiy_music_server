@@ -1965,7 +1965,7 @@ if __name__ == '__main__':
         print(f"\nStarting server on http://0.0.0.0:{SERVICE_PORT}")
         if zeroconf_instance:
             print(f"✓ mDNS enabled")
-            print(f"  📱 Android users: Visit http://cubie:{SERVICE_PORT} (Android auto-appends .local)")
+            print(f"  📱 Android users: Visit http://cubie:{SERVICE_PORT} (hotspot DNS) or http://<pi-ip>:{SERVICE_PORT}")
             print(f"  🖥️  Mac/Desktop: Visit http://cubie.local:{SERVICE_PORT}")
         else:
             print("⚠ mDNS disabled: Using IP address instead")

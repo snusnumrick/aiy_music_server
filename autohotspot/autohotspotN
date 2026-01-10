@@ -87,6 +87,8 @@ createAdHocNetwork()
     # Create dnsmasq config with local DNS for Android compatibility
     cat > /tmp/dnsmasq.conf << EOF
 interface=wlan0
+bind-interfaces
+except-interface=lo
 dhcp-range=$DHCP_RANGE,255.255.255.0,12h
 dhcp-option=3,$HOST_IP
 dhcp-option=6,$HOST_IP
@@ -108,7 +110,13 @@ EOF
         echo "      Consider adding 'multicast_to_unicast=1' to /etc/hostapd/hostapd.conf"
     fi
 
-    systemctl start dnsmasq
+    # Start dnsmasq with the generated config (system dnsmasq.conf is not dynamic).
+    # Store PID so KillHotspot can clean it up.
+    systemctl stop dnsmasq >/dev/null 2>&1 || true
+    pkill -f "dnsmasq.*-C /tmp/dnsmasq.conf" >/dev/null 2>&1 || true
+    rm -f /tmp/dnsmasq_hotspot.pid
+    dnsmasq -C /tmp/dnsmasq.conf -x /tmp/dnsmasq_hotspot.pid >/dev/null 2>&1
+
     systemctl start hostapd
     echo 1 > /proc/sys/net/ipv4/ip_forward
 
@@ -133,7 +141,13 @@ KillHotspot()
 
     ip link set dev "$wifidev" down
     systemctl stop hostapd
-    systemctl stop dnsmasq
+    # Stop hotspot dnsmasq instance (if we started it)
+    if [ -f /tmp/dnsmasq_hotspot.pid ]; then
+        kill "$(cat /tmp/dnsmasq_hotspot.pid)" >/dev/null 2>&1 || true
+        rm -f /tmp/dnsmasq_hotspot.pid
+    fi
+    pkill -f "dnsmasq.*-C /tmp/dnsmasq.conf" >/dev/null 2>&1 || true
+    systemctl stop dnsmasq >/dev/null 2>&1 || true
     if iptables 2>&1 | grep 'no command specified' ; then
         iptables -D FORWARD -i "$ethdev" -o "$wifidev" -m state --state RELATED,ESTABLISHED -j ACCEPT
         iptables -D FORWARD -i "$wifidev" -o "$ethdev" -j ACCEPT
