@@ -69,7 +69,7 @@ DHCP_RANGE="${NETWORK_BASE}.10,${NETWORK_BASE}.100"
 cat > /tmp/dnsmasq.conf << EOF
 interface=wlan0
 dhcp-range=$DHCP_RANGE,255.255.255.0,12h
-dhcp-option=3,$HOST_IP
+# dhcp-option=3,$HOST_IP
 dhcp-option=6,$HOST_IP
 log-queries
 log-dhcp
