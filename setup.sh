@@ -285,9 +285,19 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo 1 > /proc/sys/net/ipv4/ip_forward
     sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
 
-    # Add initial redirect rule (will be updated after server starts)
-    echo "Adding initial iptables redirect rule..."
-    iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5000 2>/dev/null || true
+    # Clean up existing redirect rules to prevent duplicates
+    echo "Cleaning up existing iptables redirect rules..."
+    # Remove all existing wlan0 port 80 redirect rules
+    while iptables -t nat -C PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5000 2>/dev/null; do
+        iptables -t nat -D PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5000 2>/dev/null || break
+    done
+    while iptables -t nat -C PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5001 2>/dev/null; do
+        iptables -t nat -D PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5001 2>/dev/null || break
+    done
+
+    # Add single clean redirect rule (will be updated after server starts)
+    echo "Adding iptables redirect rule..."
+    iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 5000
 
     # Save rules
     echo "Saving iptables rules..."
