@@ -242,8 +242,7 @@ async function openDocument(index) {
 }
 
 function showDocumentViewer(doc, html) {
-    elements.documentTitle.textContent = doc.filename;
-    elements.documentMeta.textContent = `${formatFileSize(doc.size)} • ${formatDate(doc.modified)}`;
+    elements.documentTitle.textContent = doc.title || doc.filename;
     elements.documentContent.innerHTML = html;
     elements.documentViewer.classList.remove('hidden');
     elements.documentViewer.style.display = 'flex';
@@ -272,7 +271,7 @@ function markdownToHtml(markdown) {
                 inCode = false;
                 html += '</code></pre>';
             }
-            return;
+            continue;
         }
 
         if (inCode) {
@@ -702,7 +701,7 @@ async function downloadDocumentAsPdf(index) {
 
         await html2pdf().set({
             margin: 10,
-            filename: (doc.title || doc.filename).replace(/[^\w\s-]/g, '').trim() + '.pdf',
+            filename: (doc.title !== doc.filename ? doc.title : doc.filename.replace(/\.[^.]+$/, '')).replace(/[<>:"/\\|?*]/g, '_').trim() + '.pdf',
             image: { type: 'jpeg', quality: 0.95 },
             html2canvas: { scale: 2 },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
