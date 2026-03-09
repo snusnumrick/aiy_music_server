@@ -702,7 +702,7 @@ async function downloadDocumentAsPdf(index) {
 
         await html2pdf().set({
             margin: 10,
-            filename: doc.filename.replace(/\.md$/, '.pdf'),
+            filename: (doc.title || doc.filename).replace(/[^\w\s-]/g, '').trim() + '.pdf',
             image: { type: 'jpeg', quality: 0.95 },
             html2canvas: { scale: 2 },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }

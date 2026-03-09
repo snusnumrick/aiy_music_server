@@ -806,7 +806,9 @@ def get_documents():
 @app.route('/api/documents/<filename>')
 def get_document(filename):
     """Serve/download document file"""
-    return send_from_directory(DOCUMENTS_FOLDER, filename, as_attachment=True)
+    ext = os.path.splitext(filename)[1].lower()
+    as_attachment = ext != '.md'
+    return send_from_directory(DOCUMENTS_FOLDER, filename, as_attachment=as_attachment)
 
 @app.route('/api/config/folders')
 def get_folders_config():
