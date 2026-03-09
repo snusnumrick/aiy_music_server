@@ -197,7 +197,7 @@ function renderDocumentsList() {
                     <i data-lucide="file-text" class="w-6 h-6"></i>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="font-bold text-gray-800 dark:text-gray-200 truncate">${escapeHtml(doc.filename)}</div>
+                    <div class="font-bold text-gray-800 dark:text-gray-200 truncate">${escapeHtml(doc.title || doc.filename)}</div>
                     <div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
                         <span>${formatFileSize(doc.size)}</span>
                         <span>${formatDate(doc.modified)}</span>

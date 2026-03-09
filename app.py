@@ -501,13 +501,27 @@ def load_document_metadata():
         try:
             file_stat = os.stat(filepath)
             
+            ext = os.path.splitext(filename)[1].lower().replace('.', '')
+            title = filename
+            if ext == 'md':
+                try:
+                    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith('#'):
+                                title = line.lstrip('#').strip()
+                                break
+                except Exception:
+                    pass
+
             doc = {
                 'filename': filename,
+                'title': title,
                 'url': f'/api/documents/{filename}',
                 'size': file_stat.st_size,
                 'created': datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
                 'modified': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
-                'type': os.path.splitext(filename)[1].lower().replace('.', '')
+                'type': ext
             }
             documents.append(doc)
         except Exception as e:
