@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Setup virtual environment (from music_server directory)
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv music_server && source music_server/bin/activate
 pip install -r requirements.txt
 
 # Run server
