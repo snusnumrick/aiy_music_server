@@ -191,7 +191,7 @@ function renderDocumentsList() {
     }
 
     elements.documentsList.innerHTML = documentsData.map((doc, index) => `
-        <a href="${doc.url}" data-doc-index="${index}" class="block bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
+        <div data-doc-index="${index}" class="cursor-pointer bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
             <div class="flex items-center gap-3">
                 <div class="bg-primary/10 p-3 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
                     <i data-lucide="file-text" class="w-6 h-6"></i>
@@ -203,11 +203,14 @@ function renderDocumentsList() {
                         <span>${formatDate(doc.modified)}</span>
                     </div>
                 </div>
-                <div class="text-gray-400">
-                    <i data-lucide="${doc.type === 'md' ? 'maximize-2' : 'download'}" class="w-5 h-5"></i>
+                <div class="text-gray-400 shrink-0">
+                    ${doc.type === 'md'
+                        ? `<button data-doc-download="${index}" class="p-1 hover:text-primary transition-colors" title="Download as PDF"><i data-lucide="download" class="w-5 h-5 pointer-events-none"></i></button>`
+                        : `<i data-lucide="download" class="w-5 h-5"></i>`
+                    }
                 </div>
             </div>
-        </a>
+        </div>
     `).join('');
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -668,12 +671,50 @@ elements.deleteModal.addEventListener('click', (e) => {
 });
 
 elements.documentsList.addEventListener('click', (e) => {
+    const dlBtn = e.target.closest('[data-doc-download]');
+    if (dlBtn) {
+        e.stopPropagation();
+        downloadDocumentAsPdf(Number(dlBtn.dataset.docDownload));
+        return;
+    }
     const target = e.target.closest('[data-doc-index]');
     if (!target) return;
     e.preventDefault();
     const index = Number(target.dataset.docIndex);
     openDocument(index);
 });
+
+async function downloadDocumentAsPdf(index) {
+    if (index < 0 || index >= documentsData.length) return;
+    const doc = documentsData[index];
+    try {
+        elements.status.textContent = 'Generating PDF...';
+        const response = await fetch(doc.url);
+        if (!response.ok) throw new Error('Failed to load document');
+        const text = await response.text();
+        const html = markdownToHtml(text);
+
+        const container = document.createElement('div');
+        container.className = 'doc-content';
+        container.style.cssText = 'padding:20px;font-family:sans-serif;max-width:800px;color:#000;background:#fff';
+        container.innerHTML = html;
+        document.body.appendChild(container);
+
+        await html2pdf().set({
+            margin: 10,
+            filename: doc.filename.replace(/\.md$/, '.pdf'),
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(container).save();
+
+        document.body.removeChild(container);
+        elements.status.textContent = 'Ready';
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        elements.status.textContent = 'PDF generation failed';
+    }
+}
 
 document.getElementById('fullscreen-close-btn').addEventListener('click', hideFullscreenLyrics);
 document.getElementById('exit-fullscreen-btn').addEventListener('click', hideFullscreenLyrics);
