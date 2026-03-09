@@ -5,3 +5,4 @@ zeroconf==0.148.0
 Pillow==6.2.2
 markdown
 xhtml2pdf
+reportlab<3.6
