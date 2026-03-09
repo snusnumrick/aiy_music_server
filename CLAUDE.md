@@ -4,17 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AIY Music Server (cubie-server) is a lightweight media server for Raspberry Pi Zero that serves MP3 music, pictures, and documents through a mobile-friendly web interface. It is discoverable on the local network via mDNS as `cubie.local`.
+**AIY Media Server (cubie-server)** - A lightweight Flask server for Raspberry Pi Zero that serves MP3 music, pictures, and documents through a mobile-friendly web interface with mDNS discovery (`cubie.local`).
 
-## Running the Server
+## Development Commands
 
 ```bash
-# Setup virtual environment
-python3 -m venv music_server
-source music_server/bin/activate
+# Setup virtual environment (from music_server directory)
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run
+# Run server
 python app.py
 
 # Run with custom port
@@ -32,7 +31,6 @@ There are no automated tests. Testing is manual:
 python create_test_music.py
 
 # Test API endpoints
-curl http://localhost:5000/api/music | jq
 curl http://localhost:5000/api/health | jq
 curl http://localhost:5000/api/music | jq
 curl http://localhost:5000/api/pictures | jq
@@ -67,6 +65,7 @@ All server logic lives in `app.py`. Key subsystems:
 
 - `index.html` — Main interface with three tabs: Music, Pictures, Documents
 - `app.js` — Frontend logic (~780 lines) including a custom markdown-to-HTML renderer
+- `shared-styles.js` — Reusable Tailwind components
 - `wifi-setup.html` / `wifi-setup.js` — WiFi configuration page
 - All CSS/JS assets bundled locally (Tailwind CSS, Lucide icons) for offline operation
 
@@ -80,15 +79,34 @@ Bash script (`autohotspotN`) that switches between WiFi client and hotspot mode 
 
 ## Key API Endpoints
 
-- `GET /api/music` — Music metadata (supports `?page=N&per_page=N`)
-- `GET /music/<filename>` — Stream MP3 (supports range requests, caching)
-- `GET /api/pictures`, `GET /api/pictures/<filename>`, `GET /api/pictures/<filename>/thumbnail`
-- `GET /api/documents`, `GET /api/documents/<filename>`
-- `POST /api/refresh` — Force metadata reload
-- `GET /api/health` — Health check
-- `DELETE /api/delete/<filename>` — Delete a music file
-- `GET /api/wifi/networks`, `POST /api/wifi/configure`, `GET /api/wifi/status`
-- `GET /api/tailscale/status`, `POST /api/tailscale/up`, `POST /api/tailscale/down`
+```
+GET  /                             → Root redirect
+GET  /support                      → Support page
+GET  /server-info                  → Server info page
+GET  /setup-wifi                   → WiFi setup page (captive portal)
+GET  /<path:path>                  → Catch-all (redirects to / when offline)
+
+GET  /api/music                    → Music metadata (supports ?page=N&per_page=N)
+GET  /music/<filename>             → Stream MP3 (range requests, caching)
+GET  /api/pictures                 → Pictures with EXIF/IPTC metadata
+GET  /api/pictures/<file>          → Serve picture file
+GET  /api/pictures/<file>/thumbnail → 300x300 JPEG thumbnail
+GET  /api/documents                → Document list with extracted titles
+GET  /api/documents/<filename>     → Serve document file
+POST /api/refresh                  → Force metadata reload
+GET  /api/health                   → Health check with mDNS status
+GET  /api/config                   → Server config for external tools
+GET  /api/config/folders           → Folder paths config
+DELETE /api/delete/<filename>      → Delete a music file
+GET  /api/wifi/networks            → Scan WiFi networks
+POST /api/wifi/configure           → Configure wpa_supplicant
+GET  /api/wifi/status              → Current WiFi status
+POST /api/wifi/restart             → Restart WiFi service
+POST /api/wifi/reboot              → Reboot the Pi
+GET  /api/tailscale/status         → Tailscale status
+POST /api/tailscale/up             → Enable Tailscale
+POST /api/tailscale/down           → Disable Tailscale
+```
 
 ## Configuration
 
@@ -103,8 +121,38 @@ All config is module-level constants in `app.py`:
 | `DOCUMENTS_FOLDER` | `./documents` | — |
 | `THUMBNAILS_FOLDER` | `./.thumbnails` | — |
 
+## Coding Conventions
+
+- **Python**: PEP 8, type hints on new/changed functions, use `FILE_CHANGE_LOCK` for cache modifications
+- **JavaScript/CSS**: Keep existing modular structure, kebab-case for DOM IDs/classes
+- **File naming**: snake_case for Python, kebab-case for static assets
+
+## Extending the Server
+
+**Adding a new content type:**
+1. Create cache dict and loading function following `load_picture_metadata()` pattern
+2. Add file extensions to `MusicEventHandler` event filters
+3. Add API routes following existing patterns (`@app.route('/api/newtype')`)
+4. Update frontend tabs in `app.js`
+
+**Adding a new API endpoint:**
+```python
+@app.route('/api/feature', methods=['GET'])
+def get_feature():
+    with FILE_CHANGE_LOCK:
+        # Access caches safely
+        pass
+    return jsonify(result)
+```
+
 ## Dependencies
 
 Python: Flask, mutagen (MP3 tags), watchdog (filesystem events), zeroconf (mDNS), Pillow (images).
 
 System (on Pi): ffmpeg, avahi-daemon, hostapd, dnsmasq, wpasupplicant, iptables-persistent.
+
+## Pi Zero Constraints
+
+- **512MB RAM**: Keep metadata in memory, avoid large objects
+- **Single core**: File processing is debounced, no blocking operations
+- **Storage**: Thumbnails cached to disk, originals streamed on-demand
