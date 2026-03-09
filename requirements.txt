@@ -4,4 +4,4 @@ watchdog==3.0.0
 zeroconf==0.148.0
 Pillow==6.2.2
 markdown
-weasyprint
+xhtml2pdf

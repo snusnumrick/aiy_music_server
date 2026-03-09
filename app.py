@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import List, Set, Tuple
 
 from PIL import Image, ExifTags
+import io
 import markdown as markdown_lib
 from flask import Flask, jsonify, send_from_directory, request, make_response
 from mutagen.id3 import ID3NoHeaderError
@@ -814,7 +815,8 @@ def get_document(filename):
 @app.route('/api/documents/<filename>/pdf')
 def get_document_pdf(filename):
     """Convert markdown document to PDF and return it"""
-    from weasyprint import HTML as WeasyprintHTML
+    from xhtml2pdf import pisa
+    from urllib.parse import quote
     filepath = os.path.join(DOCUMENTS_FOLDER, filename)
     if not os.path.exists(filepath):
         return jsonify({'error': 'File not found'}), 404
@@ -829,26 +831,26 @@ def get_document_pdf(filename):
         full_html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{title}</title>
 <style>
-  body{{font-family:sans-serif;font-size:14px;line-height:1.6;max-width:800px;margin:40px auto;padding:0 20px;color:#000}}
-  h1{{font-size:1.8em;font-weight:800;margin:.6em 0 .3em}}
-  h2{{font-size:1.5em;font-weight:800;margin:.6em 0 .3em}}
-  h3{{font-size:1.3em;font-weight:800;margin:.6em 0 .3em}}
-  h4,h5,h6{{font-weight:800;margin:.5em 0 .25em}}
-  p{{margin:.5em 0}}
-  ul,ol{{padding-left:1.4em;margin:.4em 0 .6em}}
-  li{{margin:.2em 0}}
-  code{{background:#f0f0f0;padding:.15em .35em;border-radius:3px;font-size:.9em}}
-  pre{{background:#f0f0f0;padding:1em;border-radius:5px;margin:.75em 0}}
-  pre code{{background:transparent;padding:0}}
-  blockquote{{border-left:4px solid #667eea;padding-left:1em;color:#555;margin:.6em 0}}
-  table{{width:100%;border-collapse:collapse;margin:.75em 0}}
-  th,td{{border:1px solid #ccc;padding:.5em .75em;text-align:left}}
-  th{{background:#f0f0f0;font-weight:800}}
-  hr{{border:none;border-top:1px solid #ccc;margin:1em 0}}
+  body{{font-family:Helvetica;font-size:11pt;line-height:1.5;color:#000}}
+  h1{{font-size:18pt;font-weight:bold;margin:8pt 0 4pt}}
+  h2{{font-size:15pt;font-weight:bold;margin:8pt 0 4pt}}
+  h3{{font-size:13pt;font-weight:bold;margin:6pt 0 3pt}}
+  h4,h5,h6{{font-weight:bold;margin:5pt 0 3pt}}
+  p{{margin:4pt 0}}
+  ul,ol{{margin:4pt 0 6pt;padding-left:18pt}}
+  li{{margin:2pt 0}}
+  code{{font-size:9pt}}
+  pre{{background:#f0f0f0;padding:8pt;margin:6pt 0;font-size:9pt}}
+  blockquote{{margin:6pt 0;padding-left:10pt;border-left:3pt solid #667eea;color:#555}}
+  table{{width:100%;border-collapse:collapse;margin:6pt 0}}
+  th,td{{border:0.5pt solid #ccc;padding:4pt 6pt;text-align:left}}
+  th{{background:#f0f0f0;font-weight:bold}}
+  hr{{border-top:0.5pt solid #ccc;margin:8pt 0}}
 </style></head>
 <body>{body_html}</body></html>"""
-        pdf_bytes = WeasyprintHTML(string=full_html).write_pdf()
-        from urllib.parse import quote
+        buf = io.BytesIO()
+        pisa.CreatePDF(full_html.encode('utf-8'), dest=buf, encoding='utf-8')
+        pdf_bytes = buf.getvalue()
         pdf_name = os.path.splitext(filename)[0] + '.pdf'
         response = make_response(pdf_bytes)
         response.headers['Content-Type'] = 'application/pdf'
