@@ -4,23 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**AIY Media Server (cubie-server)** - A lightweight Flask server for Raspberry Pi Zero that auto-detects and serves MP3 files, images, and documents through a mobile-friendly web interface with mDNS discovery (`cubie.local`).
+AIY Music Server (cubie-server) is a lightweight media server for Raspberry Pi Zero that serves MP3 music, pictures, and documents through a mobile-friendly web interface. It is discoverable on the local network via mDNS as `cubie.local`.
 
-## Development Commands
+## Running the Server
 
 ```bash
-# Setup (from music_server directory)
-cd music_server
-python3 -m venv .venv && source .venv/bin/activate
+# Setup virtual environment
+python3 -m venv music_server
+source music_server/bin/activate
 pip install -r requirements.txt
 
-# Run server
+# Run
 python app.py
 
+# Run with custom port
+SERVICE_PORT=8080 python app.py
+```
+
+The server auto-detects an available port starting from 5000 and binds to `0.0.0.0`.
+
+## Testing
+
+There are no automated tests. Testing is manual:
+
+```bash
 # Generate test MP3 files (requires ffmpeg)
 python create_test_music.py
 
-# Test API
+# Test API endpoints
+curl http://localhost:5000/api/music | jq
 curl http://localhost:5000/api/health | jq
 curl http://localhost:5000/api/music | jq
 curl http://localhost:5000/api/pictures | jq
@@ -40,67 +52,59 @@ avahi-browse -a -t | grep -i cubie
 
 ## Architecture
 
-### Backend (`music_server/app.py`)
+### Backend: Single-file Flask app (`app.py`, ~2000 lines)
 
-Single Flask application with these subsystems:
+All server logic lives in `app.py`. Key subsystems:
 
-1. **Port Auto-Detection** - Scans 5000-5099, writes active port to `/tmp/music_server_port.txt`
-2. **File Monitor** - Watchdog observer on `music/`, `pictures/`, `documents/` with 0.5s debounce
-3. **Metadata Extraction**:
-   - Music: mutagen reads ID3v2 tags (TIT2, TPE1, USLT for title/artist/lyrics)
-   - Pictures: Pillow extracts EXIF/IPTC metadata, generates 300x300 thumbnails to `.thumbnails/`
-   - Documents: Basic file stats
-4. **mDNS Registration** - zeroconf registers `_http._tcp` and `_workstation._tcp` (Android-friendly)
-5. **REST API** - JSON endpoints with pagination, ETags, range requests
+- **Media metadata** — Scans `music/`, `pictures/`, `documents/` directories, extracts ID3 tags (mutagen), EXIF data (Pillow). Metadata stored in global lists (`METADATA_CACHE`, `PICTURES_CACHE`, `DOCUMENTS_CACHE`) protected by `FILE_CHANGE_LOCK`.
+- **File monitoring** — `MusicEventHandler` (watchdog) watches all three media directories with 0.5s debounce to avoid partial reads.
+- **mDNS discovery** — Dual registration via Python `zeroconf` library and spawned `avahi-publish-service` processes. Registers `_http._tcp`, `_workstation._tcp`, and `_tcp` service types for cross-platform compatibility.
+- **Captive portal** — Writes port to `/tmp/music_server_port.txt`, configures iptables to redirect port 80 to the server port. Catch-all route redirects to `/setup-wifi` when offline.
+- **WiFi management** — Endpoints to scan networks (`iwlist wlan0 scan`), configure wpa_supplicant, restart services, and reboot the system. These require sudo and are designed for Pi deployment.
+- **Image processing** — Generates 300x300 JPEG thumbnails in `.thumbnails/` directory.
 
-Key globals: `MUSIC_CACHE`, `PICTURES_CACHE`, `DOCUMENTS_CACHE`, `FILE_CHANGE_LOCK` (thread safety)
+### Frontend: SPA in `static/`
 
-### Frontend (`music_server/static/`)
+- `index.html` — Main interface with three tabs: Music, Pictures, Documents
+- `app.js` — Frontend logic (~780 lines) including a custom markdown-to-HTML renderer
+- `wifi-setup.html` / `wifi-setup.js` — WiFi configuration page
+- All CSS/JS assets bundled locally (Tailwind CSS, Lucide icons) for offline operation
 
-- `index.html` - Main SPA with Tailwind CSS
-- `app.js` - Tab navigation (Music/Pictures/Documents), 3s polling, search, full-screen viewers
-- `shared-styles.js` - Reusable Tailwind components
-- `wifi-setup.html` - Captive portal WiFi configuration
+### Autohotspot (`autohotspot/`)
 
-### API Endpoints
+Bash script (`autohotspotN`) that switches between WiFi client and hotspot mode based on whether configured SSIDs are in range. Managed by a systemd service.
 
-```
-GET  /api/music                 → JSON list (supports ?page=N&per_page=N)
-GET  /api/pictures              → JSON list with EXIF/IPTC metadata
-GET  /api/documents             → JSON list
-GET  /api/pictures/<file>/thumbnail → 300x300 JPEG
-GET  /music/<filename>          → Stream with range request support
-POST /api/refresh               → Force metadata reload
-GET  /api/health                → Health check with mDNS status
-GET  /api/config                → Server config for external tools
-```
+### Startup via systemd
 
-## Coding Conventions
+`scripts/run.sh` is the service entry point: waits for network (up to 5 min), optionally pulls git updates, then starts `app.py`.
 
-- **Python**: PEP 8, type hints on new/changed functions, use `FILE_CHANGE_LOCK` for cache modifications
-- **JavaScript/CSS**: Keep existing modular structure, kebab-case for DOM IDs/classes
-- **File naming**: snake_case for Python, kebab-case for static assets
+## Key API Endpoints
 
-## Extending the Server
+- `GET /api/music` — Music metadata (supports `?page=N&per_page=N`)
+- `GET /music/<filename>` — Stream MP3 (supports range requests, caching)
+- `GET /api/pictures`, `GET /api/pictures/<filename>`, `GET /api/pictures/<filename>/thumbnail`
+- `GET /api/documents`, `GET /api/documents/<filename>`
+- `POST /api/refresh` — Force metadata reload
+- `GET /api/health` — Health check
+- `DELETE /api/delete/<filename>` — Delete a music file
+- `GET /api/wifi/networks`, `POST /api/wifi/configure`, `GET /api/wifi/status`
+- `GET /api/tailscale/status`, `POST /api/tailscale/up`, `POST /api/tailscale/down`
 
-**Adding a new content type:**
-1. Create cache dict and loading function following `load_picture_metadata()` pattern
-2. Add file extensions to `MusicEventHandler` event filters
-3. Add API routes following existing patterns (`@app.route('/api/newtype')`)
-4. Update frontend tabs in `app.js`
+## Configuration
 
-**Adding a new API endpoint:**
-```python
-@app.route('/api/feature', methods=['GET'])
-def get_feature():
-    with FILE_CHANGE_LOCK:
-        # Access caches safely
-        pass
-    return jsonify(result)
-```
+All config is module-level constants in `app.py`:
 
-## Pi Zero Constraints
+| Constant | Default | Env Override |
+|---|---|---|
+| `PREFERRED_SERVICE_PORT` | `5000` | `SERVICE_PORT` |
+| `SERVICE_NAME` | hostname | `SERVICE_NAME` |
+| `MUSIC_FOLDER` | `./music` | — |
+| `PICTURES_FOLDER` | `./pictures` | — |
+| `DOCUMENTS_FOLDER` | `./documents` | — |
+| `THUMBNAILS_FOLDER` | `./.thumbnails` | — |
 
-- **512MB RAM**: Keep metadata in memory, avoid large objects
-- **Single core**: File processing is debounced, no blocking operations
-- **Storage**: Thumbnails cached to disk, originals streamed on-demand
+## Dependencies
+
+Python: Flask, mutagen (MP3 tags), watchdog (filesystem events), zeroconf (mDNS), Pillow (images).
+
+System (on Pi): ffmpeg, avahi-daemon, hostapd, dnsmasq, wpasupplicant, iptables-persistent.
