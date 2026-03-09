@@ -687,39 +687,16 @@ async function downloadDocumentAsPdf(index) {
     if (index < 0 || index >= documentsData.length) return;
     const doc = documentsData[index];
     try {
-        elements.status.textContent = 'Opening print dialog...';
-        const response = await fetch(doc.url);
-        if (!response.ok) throw new Error('Failed to load document');
-        const text = await response.text();
-        const html = markdownToHtml(text);
-        const title = doc.title !== doc.filename ? doc.title : doc.filename.replace(/\.[^.]+$/, '');
-
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
-<style>
-  body{font-family:sans-serif;font-size:14px;line-height:1.6;max-width:800px;margin:40px auto;padding:0 20px;color:#000}
-  h1{font-size:1.8em;font-weight:800;margin:.6em 0 .3em}
-  h2{font-size:1.5em;font-weight:800;margin:.6em 0 .3em}
-  h3{font-size:1.3em;font-weight:800;margin:.6em 0 .3em}
-  h4,h5,h6{font-weight:800;margin:.5em 0 .25em}
-  p{margin:.5em 0}
-  ul,ol{padding-left:1.4em;margin:.4em 0 .6em}
-  li{margin:.2em 0}
-  code{background:#f0f0f0;padding:.15em .35em;border-radius:3px;font-size:.95em}
-  pre{background:#f0f0f0;padding:1em;border-radius:5px;margin:.75em 0;white-space:pre-wrap}
-  pre code{background:transparent;padding:0}
-  blockquote{border-left:4px solid #667eea;padding-left:1em;color:#555;margin:.6em 0}
-  table{width:100%;border-collapse:collapse;margin:.75em 0}
-  th,td{border:1px solid #ccc;padding:.5em .75em;text-align:left}
-  th{background:#f0f0f0;font-weight:800}
-  hr{border:none;border-top:1px solid #ccc;margin:1em 0}
-  @media print{body{margin:0}}
-</style></head>
-<body>${html}</body></html>`);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => { printWindow.print(); }, 400);
+        elements.status.textContent = 'Generating PDF...';
+        const pdfUrl = doc.url + '/pdf';
+        const response = await fetch(pdfUrl);
+        if (!response.ok) throw new Error('PDF generation failed');
+        const blob = await response.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (doc.title !== doc.filename ? doc.title : doc.filename.replace(/\.[^.]+$/, '')) + '.pdf';
+        a.click();
+        URL.revokeObjectURL(a.href);
         elements.status.textContent = 'Ready';
     } catch (error) {
         console.error('Error generating PDF:', error);

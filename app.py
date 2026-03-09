@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import List, Set, Tuple
 
 from PIL import Image, ExifTags
+import markdown as markdown_lib
 from flask import Flask, jsonify, send_from_directory, request, make_response
 from mutagen.id3 import ID3NoHeaderError
 from mutagen.mp3 import MP3
@@ -809,6 +810,53 @@ def get_document(filename):
     ext = os.path.splitext(filename)[1].lower()
     as_attachment = ext != '.md'
     return send_from_directory(DOCUMENTS_FOLDER, filename, as_attachment=as_attachment)
+
+@app.route('/api/documents/<filename>/pdf')
+def get_document_pdf(filename):
+    """Convert markdown document to PDF and return it"""
+    from weasyprint import HTML as WeasyprintHTML
+    filepath = os.path.join(DOCUMENTS_FOLDER, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'File not found'}), 404
+    ext = os.path.splitext(filename)[1].lower()
+    if ext != '.md':
+        return jsonify({'error': 'Only markdown files can be converted to PDF'}), 400
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        body_html = markdown_lib.markdown(content, extensions=['tables', 'fenced_code'])
+        title = os.path.splitext(filename)[0]
+        full_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>{title}</title>
+<style>
+  body{{font-family:sans-serif;font-size:14px;line-height:1.6;max-width:800px;margin:40px auto;padding:0 20px;color:#000}}
+  h1{{font-size:1.8em;font-weight:800;margin:.6em 0 .3em}}
+  h2{{font-size:1.5em;font-weight:800;margin:.6em 0 .3em}}
+  h3{{font-size:1.3em;font-weight:800;margin:.6em 0 .3em}}
+  h4,h5,h6{{font-weight:800;margin:.5em 0 .25em}}
+  p{{margin:.5em 0}}
+  ul,ol{{padding-left:1.4em;margin:.4em 0 .6em}}
+  li{{margin:.2em 0}}
+  code{{background:#f0f0f0;padding:.15em .35em;border-radius:3px;font-size:.9em}}
+  pre{{background:#f0f0f0;padding:1em;border-radius:5px;margin:.75em 0}}
+  pre code{{background:transparent;padding:0}}
+  blockquote{{border-left:4px solid #667eea;padding-left:1em;color:#555;margin:.6em 0}}
+  table{{width:100%;border-collapse:collapse;margin:.75em 0}}
+  th,td{{border:1px solid #ccc;padding:.5em .75em;text-align:left}}
+  th{{background:#f0f0f0;font-weight:800}}
+  hr{{border:none;border-top:1px solid #ccc;margin:1em 0}}
+</style></head>
+<body>{body_html}</body></html>"""
+        pdf_bytes = WeasyprintHTML(string=full_html).write_pdf()
+        from urllib.parse import quote
+        pdf_name = os.path.splitext(filename)[0] + '.pdf'
+        response = make_response(pdf_bytes)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(pdf_name)}"
+        return response
+    except Exception as e:
+        print(f"PDF generation error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/config/folders')
 def get_folders_config():
