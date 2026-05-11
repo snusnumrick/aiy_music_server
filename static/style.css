@@ -388,10 +388,18 @@ body {
     margin: 0.5em 0;
 }
 
-.doc-content ul {
+.doc-content ul,
+.doc-content ol {
     padding-left: 1.4em;
     margin: 0.4em 0 0.6em;
+}
+
+.doc-content ul {
     list-style: disc;
+}
+
+.doc-content ol {
+    list-style: decimal;
 }
 
 .doc-content li {

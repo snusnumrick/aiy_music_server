@@ -66,6 +66,24 @@ PICTURES_CACHE = []
 DOCUMENTS_CACHE = []
 FILE_CHANGE_LOCK = threading.Lock()
 
+SEARCH_REPORT_TITLE_PREFIX = "Web search:"
+SEARCH_REPORT_METADATA_KEYS = {
+    "saved",
+    "query",
+    "additional queries",
+    "after date",
+    "location",
+}
+SEARCH_REPORT_LINK_HEADINGS = (
+    "полезные ссылки",
+    "источники",
+    "sources",
+    "source links",
+    "useful links",
+    "links",
+    "references",
+)
+
 # mDNS Configuration
 ZEROCONF_INSTANCE = None
 ZEROCONF_INSTANCES = []  # Multiple service registrations for better Android compatibility
@@ -505,14 +523,18 @@ def load_document_metadata():
             
             ext = os.path.splitext(filename)[1].lower().replace('.', '')
             title = filename
+            report_type = "document"
+            report_metadata = {}
             if ext == 'md':
                 try:
                     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                        markdown_lines = []
                         for line in f:
+                            markdown_lines.append(line.rstrip('\n'))
                             line = line.strip()
-                            if line.startswith('#'):
+                            if line.startswith('#') and title == filename:
                                 title = line.lstrip('#').strip()
-                                break
+                        report_type, report_metadata = classify_markdown_document(title, markdown_lines)
                 except Exception:
                     pass
 
@@ -523,7 +545,9 @@ def load_document_metadata():
                 'size': file_stat.st_size,
                 'created': datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
                 'modified': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
-                'type': ext
+                'type': ext,
+                'report_type': report_type,
+                'report_metadata': report_metadata
             }
             documents.append(doc)
         except Exception as e:
@@ -532,6 +556,54 @@ def load_document_metadata():
     documents.sort(key=lambda x: x['filename'])
     DOCUMENTS_CACHE = documents
     print(f"Loaded {len(documents)} documents.")
+
+def classify_markdown_document(title, lines):
+    """Classify generated markdown reports saved by companion tools."""
+    normalized_title = (title or "").strip()
+    metadata = {}
+
+    for raw_line in lines[:40]:
+        line = raw_line.strip()
+        if not line.startswith("- "):
+            continue
+        key, separator, value = line[2:].partition(":")
+        if not separator:
+            continue
+        normalized_key = key.strip().lower()
+        if normalized_key not in SEARCH_REPORT_METADATA_KEYS:
+            continue
+        metadata[normalized_key.replace(" ", "_")] = value.strip()
+
+    headings = [
+        line.strip().lstrip("#").strip().lower()
+        for line in lines[:120]
+        if line.strip().startswith("#")
+    ]
+    has_results_heading = any(heading == "results" for heading in headings)
+    has_links_heading = any(
+        label in heading
+        for heading in headings
+        for label in SEARCH_REPORT_LINK_HEADINGS
+    )
+    external_link_count = sum(
+        1 for line in lines if "https://" in line or "http://" in line
+    )
+    is_search_report = (
+        normalized_title.lower().startswith(SEARCH_REPORT_TITLE_PREFIX.lower())
+        or ("query" in metadata and has_results_heading)
+        or (has_links_heading and external_link_count >= 2)
+    )
+    if is_search_report:
+        if normalized_title.lower().startswith(SEARCH_REPORT_TITLE_PREFIX.lower()):
+            metadata.setdefault(
+                "query",
+                normalized_title[len(SEARCH_REPORT_TITLE_PREFIX):].strip()
+            )
+        else:
+            metadata.setdefault("query", normalized_title)
+        return "search_result", metadata
+
+    return "document", metadata
 
 def load_metadata():
     """Load metadata from all MP3 files in the music folder"""

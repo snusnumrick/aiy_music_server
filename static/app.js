@@ -29,8 +29,10 @@ const elements = {
     musicView: document.getElementById('music-view'),
     picturesView: document.getElementById('pictures-view'),
     documentsView: document.getElementById('documents-view'),
+    searchResultsView: document.getElementById('search-results-view'),
     picturesGrid: document.getElementById('pictures-grid'),
     documentsList: document.getElementById('documents-list'),
+    searchResultsList: document.getElementById('search-results-list'),
     tabs: document.querySelectorAll('.tab-btn'),
     
     // Image Viewer
@@ -111,6 +113,8 @@ function updateUI() {
         renderPicturesGrid();
     } else if (currentTab === 'documents') {
         renderDocumentsList();
+    } else if (currentTab === 'search-results') {
+        renderSearchResultsList();
     }
 }
 
@@ -181,7 +185,11 @@ function renderPicturesGrid() {
 }
 
 function renderDocumentsList() {
-    if (documentsData.length === 0) {
+    const visibleDocuments = documentsData
+        .map((doc, index) => ({ doc, index }))
+        .filter(({ doc }) => doc.report_type !== 'search_result');
+
+    if (visibleDocuments.length === 0) {
         elements.documentsList.innerHTML = `
             <div class="py-10 text-center text-gray-500 text-lg">
                 No documents found
@@ -190,11 +198,11 @@ function renderDocumentsList() {
         return;
     }
 
-    elements.documentsList.innerHTML = documentsData.map((doc, index) => `
+    elements.documentsList.innerHTML = visibleDocuments.map(({ doc, index }) => `
         <div data-doc-index="${index}" class="cursor-pointer bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
             <div class="flex items-center gap-3">
                 <div class="bg-primary/10 p-3 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
-                    <i data-lucide="file-text" class="w-6 h-6"></i>
+                    <i data-lucide="${getDocumentIcon(doc)}" class="w-6 h-6"></i>
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="font-bold text-gray-800 dark:text-gray-200 truncate">${escapeHtml(doc.title || doc.filename)}</div>
@@ -214,6 +222,62 @@ function renderDocumentsList() {
     `).join('');
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function renderSearchResultsList() {
+    const searchResults = documentsData
+        .map((doc, index) => ({ doc, index }))
+        .filter(({ doc }) => doc.report_type === 'search_result');
+
+    if (searchResults.length === 0) {
+        elements.searchResultsList.innerHTML = `
+            <div class="py-10 text-center text-gray-500 text-lg">
+                No search results found
+            </div>
+        `;
+        return;
+    }
+
+    elements.searchResultsList.innerHTML = searchResults.map(({ doc, index }) => {
+        const meta = doc.report_metadata || {};
+        const query = meta.query || stripSearchTitle(doc.title || doc.filename);
+        const details = [
+            meta.saved ? `Saved ${formatAbsoluteDate(meta.saved)}` : formatDate(doc.modified),
+            meta.location ? `Location: ${meta.location}` : '',
+            meta.after_date ? `After ${meta.after_date}` : ''
+        ].filter(Boolean);
+
+        return `
+            <div data-doc-index="${index}" class="cursor-pointer bg-white/90 dark:bg-gray-800/90 rounded-xl p-4 mb-3 shadow-sm hover:shadow-md transition-all border border-transparent hover:border-primary/30 group">
+                <div class="flex items-center gap-3">
+                    <div class="bg-primary/10 p-3 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                        <i data-lucide="search" class="w-6 h-6"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs font-bold uppercase tracking-wide text-primary mb-1">Web search</div>
+                        <div class="font-bold text-gray-800 dark:text-gray-200 truncate">${escapeHtml(query)}</div>
+                        <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            ${details.map((detail) => `<span>${escapeHtml(detail)}</span>`).join('')}
+                        </div>
+                    </div>
+                    <button data-doc-download="${index}" class="text-gray-400 hover:text-primary shrink-0 p-1 transition-colors" title="Download as PDF">
+                        <i data-lucide="download" class="w-5 h-5 pointer-events-none"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function stripSearchTitle(title) {
+    return String(title || '').replace(/^web search:\s*/i, '').trim() || title;
+}
+
+function getDocumentIcon(doc) {
+    if (doc.report_type === 'search_result') return 'search';
+    return doc.type === 'md' ? 'file-text' : 'download';
 }
 
 async function openDocument(index) {
@@ -260,6 +324,13 @@ function markdownToHtml(markdown) {
     let inList = false;
     let listTag = '';
     let inCode = false;
+    const closeList = () => {
+        if (!inList) return;
+        html += listTag === 'ol' ? '</ol>' : '</ul>';
+        inList = false;
+        listTag = '';
+    };
+
     for (let idx = 0; idx < lines.length; idx++) {
         const line = lines[idx];
 
@@ -284,11 +355,7 @@ function markdownToHtml(markdown) {
         const isTableHeader = line.includes('|') && /^\s*\|?(.+\|)+.+\|?\s*$/.test(line);
         const isSeparator = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(nextLine);
         if (isTableHeader && isSeparator) {
-            if (inList) {
-                html += listTag === 'ol' ? '</ol>' : '</ul>';
-                inList = false;
-                listTag = '';
-            }
+            closeList();
             const headers = line.split('|').map((cell) => inlineMarkdown(cell.trim())).filter(Boolean);
             const rows = [];
             idx += 1; // skip separator line
@@ -312,6 +379,7 @@ function markdownToHtml(markdown) {
 
         const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
         if (headingMatch) {
+            closeList();
             const level = headingMatch[1].length;
             html += `<h${level}>${inlineMarkdown(headingMatch[2])}</h${level}>`;
             continue;
@@ -334,11 +402,7 @@ function markdownToHtml(markdown) {
             continue;
         }
 
-        if (inList) {
-            html += listTag === 'ol' ? '</ol>' : '</ul>';
-            inList = false;
-            listTag = '';
-        }
+        closeList();
 
         const blockquoteMatch = line.match(/^>\s?(.*)$/);
         if (blockquoteMatch) {
@@ -359,20 +423,33 @@ function markdownToHtml(markdown) {
         html += `<p>${inlineMarkdown(line)}</p>`;
     }
 
-    if (inList) html += '</ul>';
+    closeList();
     if (inCode) html += '</code></pre>';
     return html || '<p>No content</p>';
 }
 
 function inlineMarkdown(text) {
     let escaped = escapeHtml(text);
+    const placeholders = [];
+    const stash = (html) => {
+        const token = `\u0000${placeholders.length}\u0000`;
+        placeholders.push(html);
+        return token;
+    };
+
     escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
     escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
-    escaped = escaped.replace(/!\[(.*?)\]\((.+?)\)/g, '<img src="$2" alt="$1" loading="lazy">');
-    escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    escaped = escaped.replace(
+        /!\[(.*?)\]\((.+?)\)/g,
+        (_match, alt, src) => stash(`<img src="${src}" alt="${alt}" loading="lazy">`)
+    );
+    escaped = escaped.replace(
+        /\[(.+?)\]\((.+?)\)/g,
+        (_match, label, href) => stash(`<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`)
+    );
     escaped = escaped.replace(/(\bhttps?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    return escaped;
+    return escaped.replace(/\u0000(\d+)\u0000/g, (_match, index) => placeholders[Number(index)] || '');
 }
 
 // Image Viewer Logic
@@ -602,6 +679,19 @@ function formatDate(dateString) {
     return date.toLocaleDateString();
 }
 
+function formatAbsoluteDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return dateString;
+    return date.toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
 function showError(message) {
     elements.errorMessage.textContent = message;
     elements.errorMessage.style.display = 'block';
@@ -669,7 +759,7 @@ elements.deleteModal.addEventListener('click', (e) => {
     }
 });
 
-elements.documentsList.addEventListener('click', (e) => {
+function handleDocumentListClick(e) {
     const dlBtn = e.target.closest('[data-doc-download]');
     if (dlBtn) {
         e.stopPropagation();
@@ -681,7 +771,10 @@ elements.documentsList.addEventListener('click', (e) => {
     e.preventDefault();
     const index = Number(target.dataset.docIndex);
     openDocument(index);
-});
+}
+
+elements.documentsList.addEventListener('click', handleDocumentListClick);
+elements.searchResultsList.addEventListener('click', handleDocumentListClick);
 
 async function downloadDocumentAsPdf(index) {
     if (index < 0 || index >= documentsData.length) return;
@@ -768,10 +861,12 @@ elements.tabs.forEach(tab => {
         elements.musicView.classList.add('hidden');
         elements.picturesView.classList.add('hidden');
         elements.documentsView.classList.add('hidden');
+        elements.searchResultsView.classList.add('hidden');
         
         if (currentTab === 'music') elements.musicView.classList.remove('hidden');
         if (currentTab === 'pictures') elements.picturesView.classList.remove('hidden');
         if (currentTab === 'documents') elements.documentsView.classList.remove('hidden');
+        if (currentTab === 'search-results') elements.searchResultsView.classList.remove('hidden');
         
         updateUI();
     });
